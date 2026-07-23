@@ -2,11 +2,17 @@
 <html lang="cs">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>KotakEngine</title>
-    <link rel="manifest" href="manifest.json">
+    
+    <!-- PWA Instalace a zobrazení bez lišty prohlížeče -->
+    <link rel="manifest" href="./manifest.json">
     <meta name="theme-color" content="#00c853">
-    <link rel="apple-touch-icon" href="icon-192.png">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="KotakEngine">
+    <link rel="apple-touch-icon" href="./icon-192.png">
     
     <style>
         body { 
@@ -51,7 +57,6 @@
             transition: width 0.15s ease-out, background 0.5s ease-in-out, box-shadow 0.5s ease-in-out; 
         }
 
-        /* Živý odpočet pod textem */
         #countdown-box {
             display: none;
             font-size: 0.95rem;
@@ -60,7 +65,6 @@
             letter-spacing: 1px;
         }
 
-        /* --- STAV ÚDRŽBY / CHYBY (SYTĚ ČERVENÁ) --- */
         .logo-maintenance {
             filter: grayscale(100%) sepia(100%) saturate(100%) hue-rotate(320deg) brightness(1.2) drop-shadow(0 0 20px #ff0000) !important;
             transform: scale(1.05); 
@@ -71,7 +75,6 @@
             box-shadow: 0 0 15px #ff0000 !important;
         }
 
-        /* --- HLAVNÍ OBSAH (IFRAME PRO APP.HTML) --- */
         #main-content {
             display: none;
             width: 100vw; height: 100vh;
@@ -80,7 +83,6 @@
             background: #0a0a0a;
         }
 
-        /* Třída pro odsunutí loaderu nahoru pryč z obrazovky */
         .loader-hide {
             transform: translateY(-100%);
         }
@@ -89,7 +91,7 @@
 <body>
 
     <div id="loader-overlay">
-        <img src="logo.png" alt="Logo" id="loader-logo">
+        <img src="./logo.png" alt="Logo" id="loader-logo">
         <div id="loader-text">KotakEngine - Inicializace [0]%</div>
         <div class="progress-container"><div id="progress-bar"></div></div>
         <div id="countdown-box">Termination for: <span id="countdown-timer">--:--:--:--</span></div>
@@ -196,7 +198,6 @@
                 }
             }
 
-            // Deaktivace červeného módu
             function disableMaintenanceView() {
                 if (countdownInterval) clearInterval(countdownInterval);
                 countdownBox.style.display = "none";
@@ -209,7 +210,7 @@
 
                 mainContent.style.display = 'block';
                 if (mainContent.src === 'about:blank' || mainContent.src === '') {
-                    mainContent.src = 'app.html';
+                    mainContent.src = './app.html';
                 }
                 
                 loaderOverlay.classList.add('loader-hide');
@@ -217,7 +218,7 @@
 
             async function checkSystemStatus() {
                 try {
-                    const response = await fetch('maintenance.json?t=' + Date.now());
+                    const response = await fetch('./maintenance.json?t=' + Date.now());
                     if (!response.ok) throw new Error();
                     const data = await response.json();
 
@@ -265,16 +266,13 @@
             async function init() {
                 await simulateLoading(35);
                 await checkSystemStatus();
-
-                // Kontrola každých 5 sekund
                 checkStatusInterval = setInterval(checkSystemStatus, 5000);
             }
 
             window.onload = init;
 
-            // REGISTRACE SERVICE WORKERU PRO PWA
             if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.register('sw.js')
+                navigator.serviceWorker.register('./sw.js')
                 .then(() => console.log("KotakEngine PWA - Registrace úspěšná."))
                 .catch(err => console.error("PWA Error:", err));
             }
