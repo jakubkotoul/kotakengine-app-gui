@@ -1,0 +1,980 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>KotakEngine</title>
+    
+    <!-- PWA Manifest & Theme -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#090d16">
+    <link rel="apple-touch-icon" href="logo.png">
+
+    <!-- Knihovny pro generování reálných kódů -->
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background-color: #090d16;
+            color: #f1f5f9;
+            height: 100vh;
+            width: 100vw;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* --- STŘEDOVÁ DYNAMICKÁ TLAČÍTKA A OFFLINE TEXT --- */
+        .center-buttons {
+            position: absolute;
+            top: 50%;
+            left: 0;
+            width: 100%;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            max-height: 70vh;
+            overflow-y: auto;
+            padding: 0 20px;
+            align-items: center;
+        }
+        .center-buttons::-webkit-scrollbar { display: none; }
+
+        .center-buttons button {
+            position: relative;
+            height: 55px;
+            width: 100%;
+            background: #38bdf8;
+            color: #090d16;
+            border: none;
+            border-radius: 25px;
+            font-weight: bold;
+            font-size: 15px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(56, 189, 248, 0.2);
+            transition: transform 0.1s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .center-buttons button:active {
+            transform: scale(0.97);
+        }
+
+        .offline-message {
+            color: #64748b;
+            font-size: 0.9rem;
+            font-weight: bold;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            text-align: center;
+            padding: 10px;
+        }
+
+        .btn-icon {
+            position: absolute;
+            left: 24px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 20px;
+            line-height: 1;
+        }
+
+        /* --- WALLET BOTTOM SHEET --- */
+        .wallet-sheet {
+            position: absolute;
+            bottom: 0;
+            left: 10px;
+            width: calc(100% - 20px);
+            height: calc(100vh - 40px);
+            background: #131c2e;
+            border-radius: 24px 24px 0 0;
+            box-shadow: 0 -5px 25px rgba(0,0,0,0.6);
+            display: flex;
+            flex-direction: column;
+            transform: translateY(calc(100% - 60px));
+            will-change: transform;
+            z-index: 100;
+        }
+
+        .wallet-sheet.animating {
+            transition: transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+
+        .drag-handle-area {
+            position: relative;
+            height: 60px;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: grab;
+            flex-shrink: 0;
+        }
+
+        .drag-handle {
+            width: 40px;
+            height: 5px;
+            background: #334155;
+            border-radius: 3px;
+        }
+
+        .sheet-action-btn {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            background: transparent;
+            border: none;
+            color: #38bdf8;
+            font-weight: bold;
+            font-size: 14px;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease;
+            cursor: pointer;
+        }
+
+        .sheet-action-btn.left { left: 20px; }
+        .sheet-action-btn.right { right: 20px; font-size: 26px; line-height: 14px; }
+        .wallet-sheet.expanded .sheet-action-btn { opacity: 1; pointer-events: auto; }
+
+        .wallet-content {
+            padding: 0 20px 20px 20px;
+            flex: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .wallet-content::-webkit-scrollbar { display: none; }
+
+        /* --- KARTY V SEZNAMU --- */
+        .loyalty-card {
+            position: relative;
+            min-height: 90px;
+            border-radius: 12px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            flex-shrink: 0;
+            cursor: pointer;
+            transition: transform 0.1s, border 0.2s;
+        }
+        .loyalty-card:active { transform: scale(0.98); }
+        .loyalty-card.reorder-mode {
+            border: 2px dashed #38bdf8;
+            animation: pulse-border 1.5s infinite;
+        }
+
+        @keyframes pulse-border {
+            0% { border-color: rgba(56, 189, 248, 0.4); }
+            50% { border-color: rgba(56, 189, 248, 1); }
+            100% { border-color: rgba(56, 189, 248, 0.4); }
+        }
+
+        .card-header { font-weight: bold; font-size: 1.2rem; }
+        .card-note { font-size: 0.75rem; opacity: 0.7; margin-top: 4px; }
+
+        .card-reorder-controls {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            z-index: 10;
+        }
+        .reorder-btn {
+            background: rgba(15, 23, 42, 0.85);
+            color: #38bdf8;
+            border: 1px solid #38bdf8;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            font-size: 14px;
+            font-weight: bold;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+        }
+        .reorder-btn:active { background: #38bdf8; color: #090d16; }
+
+        .overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.75);
+            z-index: 200;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+        .overlay.active { opacity: 1; pointer-events: auto; }
+
+        .modal {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -40%);
+            width: calc(100% - 40px);
+            max-width: 360px;
+            background: #1e293b;
+            border-radius: 16px;
+            padding: 24px;
+            z-index: 210;
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+        }
+        .modal.active {
+            transform: translate(-50%, -50%);
+            opacity: 1;
+            pointer-events: auto;
+        }
+        
+        .modal h2 { margin-bottom: 15px; font-size: 1.2rem; color: #fff; text-align: center; }
+        .modal-btn { width: 100%; padding: 12px; margin-bottom: 10px; border-radius: 8px; border: none; font-weight: bold; background: #334155; color: #fff; cursor: pointer; }
+        .modal-btn.primary { background: #38bdf8; color: #090d16; }
+        .modal-btn.active-room { background: #0284c7; border: 2px solid #38bdf8; }
+        .modal-btn:active { opacity: 0.8; }
+        .modal-close { background: transparent; color: #94a3b8; margin-top: 5px; }
+
+        .form-group { margin-bottom: 15px; text-align: left; }
+        .form-group label { display: block; font-size: 0.8rem; color: #94a3b8; margin-bottom: 6px; }
+        .form-group input[type="text"] { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #fff; font-size: 1rem; }
+        
+        .flex-row { display: flex; gap: 10px; margin-bottom: 15px; margin-top: 15px; }
+        .flex-row input { flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #fff; font-size: 1rem; }
+        .flex-row button { width: auto; margin: 0; padding: 0 20px; }
+
+        .checkbox-group { display: flex; align-items: center; gap: 10px; font-size: 0.9rem; color: #cbd5e1; margin-top: 20px;}
+        .checkbox-group input { width: 18px; height: 18px; accent-color: #38bdf8; }
+
+        #roomButtonsContainer {
+            max-height: 180px;
+            overflow-x: hidden;
+            overflow-y: auto;
+            margin-bottom: 10px;
+            padding-right: 5px;
+        }
+        #roomButtonsContainer::-webkit-scrollbar { width: 4px; }
+        #roomButtonsContainer::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+
+        .room-swipe-wrap {
+            position: relative;
+            margin-bottom: 10px;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #ef4444;
+        }
+        .room-main-btn {
+            position: relative;
+            z-index: 2;
+            width: 100%;
+            margin-bottom: 0 !important;
+            transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+        .room-del-btn {
+            position: absolute;
+            right: 0;
+            top: 0;
+            bottom: 0;
+            width: 65px;
+            background: #ef4444;
+            color: white;
+            border: none;
+            z-index: 1;
+            cursor: pointer;
+            font-size: 1.4rem;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .top-sheet-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.85);
+            z-index: 150;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+        }
+        .top-sheet-overlay.active { opacity: 1; pointer-events: auto; }
+
+        .top-sheet {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            background: #f8fafc;
+            color: #0f172a;
+            border-radius: 0 0 24px 24px;
+            z-index: 160;
+            transform: translateY(-100%);
+            transition: transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+        .top-sheet.active { transform: translateY(0); }
+
+        .ts-content { padding: 40px 20px 20px 20px; text-align: center; }
+        
+        .ts-hidden-info {
+            max-height: 0;
+            opacity: 0;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+        
+        .top-sheet.expanded .ts-hidden-info {
+            max-height: 50px;
+            opacity: 1;
+            margin-bottom: 10px;
+            margin-top: 10px;
+        }
+
+        .ts-name { font-size: 1.4rem; font-weight: bold; }
+        .ts-code-text { font-family: monospace; font-size: 1.2rem; letter-spacing: 2px; }
+
+        .ts-code-display { margin: 0 auto; display: flex; justify-content: center; align-items: center;}
+        .ts-code-display canvas, .ts-code-display img { max-width: 100%; }
+
+        .ts-buttons {
+            display: flex;
+            gap: 10px;
+            padding: 0 20px;
+            max-height: 0;
+            opacity: 0;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+        .top-sheet.expanded .ts-buttons {
+            max-height: 100px;
+            opacity: 1;
+            padding: 10px 20px 20px 20px;
+        }
+        .ts-buttons button { flex: 1; padding: 12px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; }
+        
+        .ts-drag-area {
+            height: 40px;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: grab;
+        }
+        .ts-drag-handle { width: 40px; height: 5px; background: #cbd5e1; border-radius: 3px; }
+    </style>
+</head>
+<body>
+
+    <div class="top-sheet-overlay" id="topSheetOverlay" onclick="closeTopSheet()"></div>
+
+    <div class="top-sheet" id="topSheet">
+        <div class="ts-content">
+            <div class="ts-hidden-info">
+                <div class="ts-name" id="tsCardName">Název karty</div>
+            </div>
+            
+            <div class="ts-code-display" id="tsCodeVisual"></div>
+            
+            <div class="ts-hidden-info">
+                <div class="ts-code-text" id="tsCodeText">123456789</div>
+            </div>
+        </div>
+        
+        <div class="ts-buttons" id="tsButtons">
+            <button style="background: #e2e8f0; color: #0f172a;" onclick="editActiveCard()">Upravit</button>
+            <button style="background: #ef4444; color: #fff;" onclick="deleteActiveCard()">Smazat</button>
+        </div>
+
+        <div class="ts-drag-area" id="tsDragArea">
+            <div class="ts-drag-handle"></div>
+        </div>
+    </div>
+
+    <div class="center-buttons" id="dynamicMenuButtons"></div>
+
+    <div class="wallet-sheet animating" id="walletSheet">
+        <div class="drag-handle-area" id="dragArea">
+            <button class="sheet-action-btn left" id="btnSync" onclick="openSyncModal()">Room</button>
+            <div class="drag-handle"></div>
+            <button class="sheet-action-btn right" id="btnAdd" onclick="openFormModal()">+</button>
+        </div>
+
+        <div class="wallet-content" id="cardList"></div>
+    </div>
+
+    <div class="overlay" id="modalOverlay" onclick="closeModals()"></div>
+
+    <div class="modal" id="syncModal">
+        <h2>Vyberte Roomku</h2>
+        
+        <div id="roomButtonsContainer"></div>
+        
+        <div class="flex-row">
+            <input type="text" id="inpNewRoom" placeholder="Nová roomka">
+            <button class="modal-btn primary" onclick="createNewRoom()">+</button>
+        </div>
+
+        <button class="modal-btn modal-close" onclick="closeModals()">Zrušit</button>
+    </div>
+
+    <div class="modal" id="formModal">
+        <h2 id="formTitle">Nová karta</h2>
+        <div class="form-group">
+            <label>Název karty</label>
+            <input type="text" id="inpName">
+        </div>
+        <div class="form-group">
+            <label>Poznámka</label>
+            <input type="text" id="inpNote">
+        </div>
+        <div class="form-group">
+            <label>Kód karty</label>
+            <input type="text" id="inpCode">
+        </div>
+        <div class="checkbox-group">
+            <input type="checkbox" id="inpIsQR">
+            <label for="inpIsQR" style="margin: 0;">Je to QR kód</label>
+        </div>
+        <button class="modal-btn primary" style="margin-top: 25px;" onclick="saveCard()">Uložit kartu</button>
+        <button class="modal-btn modal-close" onclick="closeModals()">Zrušit</button>
+    </div>
+
+    <script>
+        // Registrace Service Workera pro PWA a auto-update z GitHubu
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js').catch(err => console.log('SW error:', err));
+            });
+        }
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyA6eh8N7PAe3nE7jCaJyO_g6JgihBLA-sw",
+            authDomain: "kotakengine-apk-gui.firebaseapp.com",
+            databaseURL: "https://kotakengine-apk-gui-default-rtdb.europe-west1.firebasedatabase.app",
+            projectId: "kotakengine-apk-gui",
+            storageBucket: "kotakengine-apk-gui.firebasestorage.app",
+            messagingSenderId: "1022545988426",
+            appId: "1:1022545988426:web:bc2f53f04066f306564fb3",
+            measurementId: "G-KV7D40WL5J"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+
+        const db = firebase.database();
+        let currentRoom = localStorage.getItem('kotak_active_room') || "room1"; 
+
+        let currentCards = []; 
+        let activeEditingIndex = null; 
+        let activeTopSheetIndex = null; 
+        let reorderIndex = null; 
+
+        const cardList = document.getElementById('cardList');
+
+        function listenToMenuButtons() {
+            const container = document.getElementById('dynamicMenuButtons');
+            const cachedButtons = localStorage.getItem('kotak_menu_buttons');
+            if (cachedButtons) {
+                try { renderMenuButtons(JSON.parse(cachedButtons)); } catch(e) {}
+            }
+
+            db.ref('menu_buttons').on('value', (snapshot) => {
+                const data = snapshot.val();
+                if (data) {
+                    const buttons = Array.isArray(data) ? data : Object.values(data);
+                    localStorage.setItem('kotak_menu_buttons', JSON.stringify(buttons));
+                    renderMenuButtons(buttons);
+                } else {
+                    const defaultButtons = [
+                        { label: "TEST 1", url: "/button/1.html", icon: "💳" },
+                        { label: "TEST 2", url: "/button/2.html", icon: "📊" },
+                        { label: "TEST 3", url: "/button/3.html", icon: "⚙️" }
+                    ];
+                    db.ref('menu_buttons').set(defaultButtons);
+                }
+            }, (error) => {
+                if (!localStorage.getItem('kotak_menu_buttons')) {
+                    container.innerHTML = `<div class="offline-message">Offline mode</div>`;
+                }
+            });
+        }
+
+        function renderMenuButtons(buttons) {
+            const container = document.getElementById('dynamicMenuButtons');
+            container.innerHTML = '';
+            if (!buttons || buttons.length === 0) {
+                container.innerHTML = `<div class="offline-message">Offline mode</div>`;
+                return;
+            }
+            buttons.forEach(btnInfo => {
+                const btn = document.createElement('button');
+                let iconHtml = btnInfo.icon ? `<span class="btn-icon">${btnInfo.icon}</span>` : '';
+                btn.innerHTML = `${iconHtml}${btnInfo.label}`;
+                btn.onclick = () => { window.location.href = btnInfo.url; };
+                container.appendChild(btn);
+            });
+        }
+
+        listenToMenuButtons();
+
+        function listenToRoomUpdates() {
+            db.ref('rooms/' + currentRoom).off();
+
+            const cachedData = localStorage.getItem('kotak_cards_' + currentRoom);
+            if (cachedData) {
+                try {
+                    currentCards = JSON.parse(cachedData);
+                    renderCards();
+                } catch (e) {}
+            }
+
+            db.ref('rooms/' + currentRoom).on('value', (snapshot) => {
+                const data = snapshot.val();
+                if (data) {
+                    currentCards = Array.isArray(data) ? data : Object.values(data);
+                    localStorage.setItem('kotak_cards_' + currentRoom, JSON.stringify(currentCards));
+                } else {
+                    currentCards = [];
+                    localStorage.removeItem('kotak_cards_' + currentRoom);
+                }
+                renderCards();
+            }, (error) => {});
+        }
+
+        function renderCards() {
+            cardList.innerHTML = '';
+            currentCards.forEach((c, index) => {
+                if (!c) return; 
+                const el = document.createElement('div');
+                el.className = 'loyalty-card';
+                if (reorderIndex === index) el.classList.add('reorder-mode');
+                
+                const colors = ['linear-gradient(135deg, #1d4ed8, #1e3a8a)', 'linear-gradient(135deg, #dc2626, #991b1b)', 'linear-gradient(135deg, #16a34a, #065f46)', 'linear-gradient(135deg, #d97706, #92400e)'];
+                el.style.background = colors[index % colors.length];
+                
+                let noteHtml = c.disc ? `<div class="card-note">${c.disc}</div>` : '';
+                el.innerHTML = `<div class="card-header">${c.card}</div>${noteHtml}`;
+
+                if (reorderIndex === index) {
+                    const controls = document.createElement('div');
+                    controls.className = 'card-reorder-controls';
+                    
+                    const upBtn = document.createElement('button');
+                    upBtn.className = 'reorder-btn';
+                    upBtn.innerHTML = '▲';
+                    upBtn.onclick = (e) => { e.stopPropagation(); moveCard(index, -1); };
+
+                    const downBtn = document.createElement('button');
+                    downBtn.className = 'reorder-btn';
+                    downBtn.innerHTML = '▼';
+                    downBtn.onclick = (e) => { e.stopPropagation(); moveCard(index, 1); };
+
+                    controls.appendChild(upBtn);
+                    controls.appendChild(downBtn);
+                    el.appendChild(controls);
+                }
+
+                el.onclick = () => {
+                    if (reorderIndex !== null) {
+                        reorderIndex = null; 
+                        renderCards();
+                    } else {
+                        openTopSheet(index);
+                    }
+                };
+
+                let pressTimer;
+                const startLongPress = () => {
+                    pressTimer = setTimeout(() => {
+                        reorderIndex = index;
+                        renderCards();
+                        if (navigator.vibrate) navigator.vibrate(50); 
+                    }, 600); 
+                };
+                const cancelLongPress = () => clearTimeout(pressTimer);
+
+                el.addEventListener('touchstart', startLongPress, {passive: true});
+                el.addEventListener('touchend', cancelLongPress);
+                el.addEventListener('touchmove', cancelLongPress);
+                el.addEventListener('mousedown', startLongPress);
+                el.addEventListener('mouseup', cancelLongPress);
+                el.addEventListener('mouseleave', cancelLongPress);
+
+                cardList.appendChild(el);
+            });
+        }
+
+        function moveCard(index, direction) {
+            const newIndex = index + direction;
+            if (newIndex < 0 || newIndex >= currentCards.length) return; 
+
+            const temp = currentCards[index];
+            currentCards[index] = currentCards[newIndex];
+            currentCards[newIndex] = temp;
+            reorderIndex = newIndex; 
+
+            db.ref('rooms/' + currentRoom).set(currentCards).then(() => {
+                localStorage.setItem('kotak_cards_' + currentRoom, JSON.stringify(currentCards));
+                renderCards();
+            });
+        }
+
+        listenToRoomUpdates();
+
+        function loadRoomsToModal() {
+            const container = document.getElementById('roomButtonsContainer');
+            container.innerHTML = '<p style="color: #94a3b8; text-align: center;">Načítám...</p>';
+
+            db.ref('rooms').once('value').then((snapshot) => {
+                container.innerHTML = '';
+                const data = snapshot.val() || {};
+                const rooms = Object.keys(data);
+                
+                if (rooms.length === 0) {
+                    container.innerHTML = '<p style="color: #94a3b8; text-align: center;">Žádné roomky nenalezeny.</p>';
+                    return;
+                }
+
+                rooms.forEach(room => {
+                    const wrap = document.createElement('div');
+                    wrap.className = 'room-swipe-wrap';
+                    
+                    const btn = document.createElement('button');
+                    btn.className = 'modal-btn room-main-btn';
+                    if (room === currentRoom) btn.classList.add('active-room');
+                    btn.innerText = room.toUpperCase();
+                    
+                    const delBtn = document.createElement('button');
+                    delBtn.className = 'room-del-btn';
+                    delBtn.innerHTML = '🗑️';
+                    delBtn.onclick = () => deleteRoom(room);
+
+                    wrap.appendChild(delBtn);
+                    wrap.appendChild(btn);
+                    container.appendChild(wrap);
+
+                    initSwipeToDelete(wrap, btn, room);
+                });
+            }).catch(err => {
+                container.innerHTML = '<p style="color: #ef4444; text-align: center;">Chyba načítání.</p>';
+            });
+        }
+
+        function initSwipeToDelete(wrap, btn, roomName) {
+            let startX = 0;
+            let isSwiping = false;
+            let isDragging = false; 
+
+            const getPos = (e) => e.touches ? e.touches[0].clientX : e.clientX;
+
+            function start(e) {
+                startX = getPos(e);
+                isSwiping = true;
+                isDragging = false;
+                btn.style.transition = 'none';
+            }
+            
+            function move(e) {
+                if (!isSwiping) return;
+                let diff = getPos(e) - startX;
+                if (Math.abs(diff) > 5) isDragging = true; 
+                if (diff < 10 && diff > -70) { 
+                    btn.style.transform = `translateX(${diff < 0 ? diff : 0}px)`;
+                }
+            }
+            
+            function end(e) {
+                if (!isSwiping) return;
+                isSwiping = false;
+                btn.style.transition = 'transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1)';
+                let diff = getPos(e) - startX;
+                if (diff < -30) {
+                    btn.style.transform = 'translateX(-65px)';
+                    wrap.classList.add('swiped');
+                } else {
+                    btn.style.transform = 'translateX(0)';
+                    wrap.classList.remove('swiped');
+                }
+                setTimeout(() => { isDragging = false; }, 50);
+            }
+
+            btn.addEventListener('touchstart', start, {passive: true});
+            btn.addEventListener('touchmove', move, {passive: true});
+            btn.addEventListener('touchend', end);
+            btn.addEventListener('mousedown', start);
+            wrap.addEventListener('mousemove', move);
+            wrap.addEventListener('mouseup', end);
+            wrap.addEventListener('mouseleave', () => { if(isSwiping) end({clientX: startX}) });
+
+            btn.onclick = () => {
+                if (isDragging) return; 
+                if (wrap.classList.contains('swiped')) {
+                    btn.style.transform = 'translateX(0)';
+                    wrap.classList.remove('swiped');
+                    return;
+                }
+                switchRoom(roomName);
+            };
+        }
+
+        function switchRoom(roomName) {
+            currentRoom = roomName;
+            localStorage.setItem('kotak_active_room', currentRoom);
+            reorderIndex = null;
+            listenToRoomUpdates();
+            closeModals();
+        }
+
+        function createNewRoom() {
+            const input = document.getElementById('inpNewRoom');
+            let newRoomName = input.value.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+            if (!newRoomName) return alert('Zadej platný název!');
+            
+            const initialCards = [{ card: "Základní karta", disc: "Tuhle kartu můžeš upravit nebo smazat", kode: "12345678", id: "barcode" }];
+            db.ref('rooms/' + newRoomName).set(initialCards).then(() => {
+                localStorage.setItem('kotak_cards_' + newRoomName, JSON.stringify(initialCards));
+                input.value = '';
+                switchRoom(newRoomName);
+            });
+        }
+
+        function deleteRoom(roomName) {
+            if(confirm(`Opravdu smazat roomku ${roomName.toUpperCase()}?`)) {
+                db.ref('rooms/' + roomName).remove().then(() => {
+                    localStorage.removeItem('kotak_cards_' + roomName);
+                    if(currentRoom === roomName) {
+                        currentCards = [];
+                        renderCards();
+                        switchRoom("room1");
+                    }
+                    loadRoomsToModal();
+                });
+            }
+        }
+
+        const modalOverlay = document.getElementById('modalOverlay');
+        const syncModal = document.getElementById('syncModal');
+        const formModal = document.getElementById('formModal');
+
+        function openSyncModal() {
+            modalOverlay.classList.add('active');
+            syncModal.classList.add('active');
+            loadRoomsToModal(); 
+        }
+
+        function openFormModal(editIndex = null) {
+            activeEditingIndex = editIndex;
+            modalOverlay.classList.add('active');
+            formModal.classList.add('active');
+            const title = document.getElementById('formTitle');
+            if (editIndex !== null) {
+                title.innerText = "Upravit kartu";
+                let c = currentCards[editIndex];
+                document.getElementById('inpName').value = c.card;
+                document.getElementById('inpNote').value = c.disc;
+                document.getElementById('inpCode').value = c.kode;
+                document.getElementById('inpIsQR').checked = (c.id === 'qrcode');
+            } else {
+                title.innerText = "Nová karta";
+                document.getElementById('inpName').value = '';
+                document.getElementById('inpNote').value = '';
+                document.getElementById('inpCode').value = '';
+                document.getElementById('inpIsQR').checked = false;
+            }
+        }
+
+        function closeModals() {
+            modalOverlay.classList.remove('active');
+            syncModal.classList.remove('active');
+            formModal.classList.remove('active');
+            activeEditingIndex = null;
+        }
+
+        function saveCard() {
+            const cardName = document.getElementById('inpName').value;
+            const note = document.getElementById('inpNote').value;
+            const code = document.getElementById('inpCode').value;
+            const isQR = document.getElementById('inpIsQR').checked;
+
+            if (!cardName || !code) return alert("Musíš vyplnit jméno a kód!");
+
+            const cardData = { card: cardName, disc: note, kode: code, id: isQR ? "qrcode" : "barcode" };
+            let newCards = [...currentCards].filter(n => n); 
+
+            if (activeEditingIndex !== null) {
+                newCards[activeEditingIndex] = cardData;
+            } else {
+                newCards.push(cardData);
+            }
+
+            db.ref('rooms/' + currentRoom).set(newCards).then(() => {
+                localStorage.setItem('kotak_cards_' + currentRoom, JSON.stringify(newCards));
+                closeModals();
+                if (activeTopSheetIndex !== null && activeTopSheetIndex === activeEditingIndex) {
+                    openTopSheet(activeTopSheetIndex); 
+                }
+            });
+        }
+
+        function deleteActiveCard() {
+            if(confirm("Opravdu smazat kartu?")) {
+                let newCards = [...currentCards].filter(n => n);
+                newCards.splice(activeTopSheetIndex, 1);
+                db.ref('rooms/' + currentRoom).set(newCards).then(() => {
+                    localStorage.setItem('kotak_cards_' + currentRoom, JSON.stringify(newCards));
+                    closeTopSheet();
+                });
+            }
+        }
+
+        const topSheet = document.getElementById('topSheet');
+        const topSheetOverlay = document.getElementById('topSheetOverlay');
+        const tsDragArea = document.getElementById('tsDragArea');
+        const tsCodeVisual = document.getElementById('tsCodeVisual');
+
+        function openTopSheet(index) {
+            activeTopSheetIndex = index;
+            const c = currentCards[index];
+            document.getElementById('tsCardName').innerText = c.card;
+            document.getElementById('tsCodeText').innerText = c.kode;
+            tsCodeVisual.innerHTML = "";
+
+            if (c.id === "qrcode") {
+                new QRCode(tsCodeVisual, {
+                    text: c.kode, width: 150, height: 150,
+                    colorDark : "#000000", colorLight : "#ffffff", correctLevel : QRCode.CorrectLevel.H
+                });
+            } else {
+                const canvas = document.createElement('canvas');
+                tsCodeVisual.appendChild(canvas);
+                try {
+                    JsBarcode(canvas, c.kode, { format: "CODE128", width: 2, height: 80, displayValue: false, margin: 0 });
+                } catch (e) {
+                    tsCodeVisual.innerHTML = "<p style='color:red;'>Neplatný formát kódu</p>";
+                }
+            }
+
+            topSheetOverlay.classList.add('active');
+            topSheet.classList.add('active');
+            topSheet.classList.remove('expanded'); 
+        }
+
+        function closeTopSheet() {
+            topSheetOverlay.classList.remove('active');
+            topSheet.classList.remove('active');
+            topSheet.classList.remove('expanded');
+            activeTopSheetIndex = null;
+        }
+
+        function editActiveCard() {
+            const idxToEdit = activeTopSheetIndex; 
+            closeTopSheet();
+            setTimeout(() => openFormModal(idxToEdit), 300);
+        }
+
+        let tsStartY = 0;
+        let tsDragging = false;
+        function onTsDragStart(y) { tsStartY = y; tsDragging = true; }
+        function onTsDragEnd(y) {
+            if(!tsDragging) return;
+            tsDragging = false;
+            let deltaY = y - tsStartY;
+            if (deltaY < -30) closeTopSheet();
+            else if (deltaY > 30) topSheet.classList.add('expanded');
+        }
+
+        tsDragArea.addEventListener('touchstart', e => onTsDragStart(e.touches[0].clientY), {passive: true});
+        document.addEventListener('touchend', e => { if(tsDragging) onTsDragEnd(e.changedTouches[0].clientY); });
+        tsDragArea.addEventListener('mousedown', e => onTsDragStart(e.clientY));
+        document.addEventListener('mouseup', e => { if(tsDragging) onTsDragEnd(e.clientY); });
+
+        const sheet = document.getElementById('walletSheet');
+        const dragArea = document.getElementById('dragArea');
+        const actionBtns = document.querySelectorAll('.sheet-action-btn');
+        
+        actionBtns.forEach(b => {
+            b.addEventListener('mousedown', e => e.stopPropagation());
+            b.addEventListener('touchstart', e => e.stopPropagation(), {passive: true});
+        });
+
+        const visibleHeight = 60; 
+        let sheetHeight = sheet.offsetHeight;
+        let maxTranslateY = sheetHeight - visibleHeight; 
+        let currentTranslateY = maxTranslateY;
+        let startY = 0;
+        let isWalletDragging = false;
+        let isExpanded = false;
+
+        window.addEventListener('resize', () => {
+            sheetHeight = sheet.offsetHeight;
+            maxTranslateY = sheetHeight - visibleHeight;
+            if (!isExpanded) {
+                currentTranslateY = maxTranslateY;
+                sheet.style.transform = `translateY(${currentTranslateY}px)`;
+            }
+        });
+
+        function onDragStartWallet(y) {
+            isWalletDragging = true; startY = y;
+            sheet.classList.remove('animating'); sheet.classList.remove('expanded');
+        }
+        function onDragMoveWallet(y) {
+            if (!isWalletDragging) return;
+            let newTranslateY = currentTranslateY + (y - startY);
+            if (newTranslateY < 0) newTranslateY = 0;
+            if (newTranslateY > maxTranslateY) newTranslateY = maxTranslateY;
+            sheet.style.transform = `translateY(${newTranslateY}px)`;
+        }
+        function onDragEndWallet(y) {
+            if (!isWalletDragging) return;
+            isWalletDragging = false;
+            sheet.classList.add('animating'); 
+            currentTranslateY += (y - startY);
+            let deltaY = y - startY;
+            if (Math.abs(deltaY) < 5) {
+                if (isExpanded) { currentTranslateY = maxTranslateY; isExpanded = false; sheet.classList.remove('expanded'); }
+                else { currentTranslateY = 0; isExpanded = true; sheet.classList.add('expanded'); }
+            } else if (deltaY < -15) {
+                currentTranslateY = 0; isExpanded = true; sheet.classList.add('expanded');
+            } else if (deltaY > 15) {
+                currentTranslateY = maxTranslateY; isExpanded = false; sheet.classList.remove('expanded');
+            } else {
+                currentTranslateY = isExpanded ? 0 : maxTranslateY;
+                if(isExpanded) sheet.classList.add('expanded'); else sheet.classList.remove('expanded');
+            }
+            sheet.style.transform = `translateY(${currentTranslateY}px)`;
+        }
+
+        dragArea.addEventListener('touchstart', e => onDragStartWallet(e.touches[0].clientY), {passive: true});
+        document.addEventListener('touchmove', e => { if (isWalletDragging) { e.preventDefault(); onDragMoveWallet(e.touches[0].clientY); } }, {passive: false});
+        document.addEventListener('touchend', e => { if (isWalletDragging) onDragEndWallet(e.changedTouches[0].clientY); });
+        dragArea.addEventListener('mousedown', e => onDragStartWallet(e.clientY));
+        document.addEventListener('mousemove', e => { if (isWalletDragging) { e.preventDefault(); onDragMoveWallet(e.clientY); } });
+        document.addEventListener('mouseup', e => { if (isWalletDragging) onDragEndWallet(e.clientY); });
+    </script>
+</body>
+</html>
