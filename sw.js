@@ -1,52 +1,67 @@
-const CACHE_NAME = 'kotakengine-cache-v1';
+const CACHE_NAME = 'kotakengine-cache-v2';
 
-// Seznam všech souborů z tvého repozitáře, které chceme uložit pro offline použití
+// Soubory a externí knihovny pro offline chod
 const urlsToCache = [
   '/',
   '/index.html',
   '/app.html',
+  '/manifest.json',
+  '/icon-192.png',
   '/icon-512.png',
   '/logo.png',
-  '/maintenance.json',
-  '/manifest.json'
+  'https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js'
 ];
 
-// Instalace Service Workeru a uložení souborů do cache
 self.addEventListener('install', event => {
+  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then(cache => {
-        console.log('Otevřena cache');
-        return cache.addAll(urlsToCache);
-      })
+      .then(cache => cache.addAll(urlsToCache))
   );
 });
 
-// Zachytávání requestů - pokud je soubor v cache, načte se odtud, jinak z internetu
-self.addEventListener('fetch', event => {
-  event.respondWith(
-    caches.match(event.request)
-      .then(response => {
-        if (response) {
-          return response; // Nalezeno v cache
-        }
-        return fetch(event.request); // Načtení ze sítě
-      })
-  );
-});
-
-// Aktualizace Service Workeru a smazání staré cache
 self.addEventListener('activate', event => {
-  const cacheWhitelist = [CACHE_NAME];
   event.waitUntil(
     caches.keys().then(cacheNames => {
       return Promise.all(
         cacheNames.map(cacheName => {
-          if (cacheWhitelist.indexOf(cacheName) === -1) {
+          if (cacheName !== CACHE_NAME) {
             return caches.delete(cacheName);
           }
         })
       );
+    })
+  );
+  self.clients.claim();
+});
+
+self.addEventListener('fetch', event => {
+  const requestUrl = new URL(event.request.url);
+
+  // Maintenance a Firebase chceme tahat vždy ze sítě (network-first nebo network-only)
+  if (requestUrl.pathname.includes('maintenance.json') || requestUrl.hostname.includes('firebase')) {
+    event.respondWith(fetch(event.request).catch(() => caches.match(event.request)));
+    return;
+  }
+
+  // Cache-first pro zbytek aplikace (HTML, obrázky, JS knihovny)
+  event.respondWith(
+    caches.match(event.request).then(cachedResponse => {
+      if (cachedResponse) {
+        return cachedResponse;
+      }
+      return fetch(event.request).then(networkResponse => {
+        // Dynamické cachování dalších souborů, pokud jsou potřeba
+        if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
+          return networkResponse;
+        }
+        const responseToCache = networkResponse.clone();
+        caches.open(CACHE_NAME).then(cache => {
+          cache.put(event.request, responseToCache);
+        });
+        return networkResponse;
+      });
     })
   );
 });
