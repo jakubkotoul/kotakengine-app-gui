@@ -494,20 +494,36 @@
         const db = firebase.database();
 
         // ==========================================
-        // SPRÁVA 5MÍSTNÉHO KÓDU ZAŘÍZENÍ
+        // SPRÁVA 5MÍSTNÉHO KÓDU ZAŘÍZENÍ (VYLEPŠENO)
         // ==========================================
         let deviceCode = localStorage.getItem('kotak_device_code');
-        if (!deviceCode) {
-            // Vygenerování náhodného 5místného kódu (např. 48291)
+        
+        // Zkontrolujeme, zda kód vůbec neexistuje, nebo je to nějaký starý nesmysl typu "null"
+        if (!deviceCode || deviceCode === "null" || deviceCode === "") {
             deviceCode = Math.floor(10000 + Math.random() * 90000).toString();
             localStorage.setItem('kotak_device_code', deviceCode);
-            
-            // Registrace do Firebase s výchozími povolenými tlačítky
-            db.ref('devices/' + deviceCode).set({
-                created_at: new Date().toISOString(),
-                allowed_buttons: ["TEST 1", "TEST 2", "TEST 3", "TEST 4"]
-            });
         }
+
+        // Vždycky kontrolujeme existenci zařízení ve Firebase
+        db.ref('devices/' + deviceCode).once('value').then((snapshot) => {
+            if (!snapshot.exists()) {
+                db.ref('devices/' + deviceCode).set({
+                    created_at: new Date().toISOString(),
+                    allowed_buttons: ["TEST 1", "TEST 2", "TEST 3", "TEST 4"]
+                }).then(() => {
+                    console.log("Zařízení zaregistrováno pod kódem: " + deviceCode);
+                    // Aktualizujeme UI v modalu s roomkama
+                    const display = document.getElementById('deviceCodeDisplay');
+                    if(display) display.innerText = `ID zařízení: ${deviceCode}`;
+                }).catch((err) => {
+                    console.error("Firebase zápis selhal:", err);
+                });
+            } else {
+                // Pokud už existuje, aspoň aktualizujeme UI v modalu
+                const display = document.getElementById('deviceCodeDisplay');
+                if(display) display.innerText = `ID zařízení: ${deviceCode}`;
+            }
+        });
 
         let currentRoom = localStorage.getItem('kotak_active_room') || "room1"; 
         let currentCards = []; 
@@ -691,8 +707,8 @@
             const container = document.getElementById('roomButtonsContainer');
             container.innerHTML = '<p style="color: #94a3b8; text-align: center;">Načítám...</p>';
 
-            // Zobrazení 5místného kódu zařízení v modálním okně
-            document.getElementById('deviceCodeDisplay').innerText = `ID zařízení: ${deviceCode}`;
+            const display = document.getElementById('deviceCodeDisplay');
+            if(display) display.innerText = `ID zařízení: ${deviceCode}`;
 
             db.ref('rooms').once('value').then((snapshot) => {
                 container.innerHTML = '';
