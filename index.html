@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>KotakEngine</title>
-    
+
     <!-- PWA Instalace a zobrazení bez lišty prohlížeče -->
     <link rel="manifest" href="./manifest.json">
     <meta name="theme-color" content="#000000">
@@ -13,7 +13,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="KotakEngine">
     <link rel="apple-touch-icon" href="./icon-192.png">
-    
+
     <style>
         body { 
             font-family: 'Consolas', 'Monaco', 'Courier New', monospace; 
@@ -110,7 +110,7 @@
             const mainContent = document.getElementById('main-content');
 
             let countdownInterval;
-            let checkStatusInterval;
+            let checkStatusInterval; // Tento interval zajišťuje nonstop kontrolu
             let isInitiallyLoaded = false;
             let currentMaintenanceState = false;
 
@@ -131,7 +131,7 @@
                 return new Promise((resolve) => {
                     let progress = parseInt(progressBar.style.width) || 0;
                     if (progress >= target) return resolve();
-                    
+
                     const interval = setInterval(() => {
                         progress += Math.floor(Math.random() * 8) + 4;
                         if (progress >= target) {
@@ -185,11 +185,11 @@
                 loaderLogo.classList.add('logo-maintenance');
                 progressBar.classList.add('bar-maintenance');
                 progressBar.style.width = '100%';
-                
+
                 loaderText.innerText = text;
                 loaderText.style.color = "#ff0000";
                 loaderText.style.textShadow = "0 0 10px #ff0000";
-                
+
                 if (showCountdown && targetTime) {
                     startCountdown(targetTime.getTime());
                 } else {
@@ -204,7 +204,7 @@
 
                 loaderLogo.classList.remove('logo-maintenance');
                 progressBar.classList.remove('bar-maintenance');
-                
+
                 loaderText.style.color = "#00c853";
                 loaderText.style.textShadow = "0 0 5px #00c853";
 
@@ -212,16 +212,35 @@
                 if (mainContent.src === 'about:blank' || mainContent.src === '') {
                     mainContent.src = './app.html';
                 }
-                
+
                 loaderOverlay.classList.add('loader-hide');
             }
 
+            // Tato funkce se volá pořád dokola díky setInterval
             async function checkSystemStatus() {
-                try {
-                    const response = await fetch('./maintenance.json?t=' + Date.now());
-                    if (!response.ok) throw new Error();
-                    const data = await response.json();
+                let data = null;
 
+                try {
+                    // 1. Pokus o stažení nejnovějšího stavu ze serveru
+                    const response = await fetch('./maintenance.json?t=' + Date.now(), { cache: 'no-store' });
+                    if (response.ok) {
+                        data = await response.json();
+                    } else {
+                        throw new Error("Server nevrátil 200 OK");
+                    }
+                } catch (e) {
+                    // 2. Fallback: Pokud jsme offline, vytáhneme data z PWA mezipaměti
+                    try {
+                        const cachedResponse = await fetch('./maintenance.json');
+                        if (cachedResponse.ok) {
+                            data = await cachedResponse.json();
+                        }
+                    } catch (cacheError) {
+                        // Nic se nenašlo ani v cache
+                    }
+                }
+
+                if (data) {
                     const now = new Date();
                     const startTime = parseDateString(data.start);
                     const endTime = parseDateString(data.end);
@@ -239,7 +258,7 @@
                     if (isMaintenance) {
                         currentMaintenanceState = true;
                         const showCountdown = (data["show-endtime"] && endTime && endTime > now);
-                        
+
                         if (!isInitiallyLoaded) {
                             await simulateLoading(100, "Prověřování systému");
                             isInitiallyLoaded = true;
@@ -250,23 +269,34 @@
                             await simulateLoading(100);
                             isInitiallyLoaded = true;
                         }
-                        
+
                         if (currentMaintenanceState || mainContent.style.display !== 'block') {
                             currentMaintenanceState = false;
                             disableMaintenanceView();
                         }
                     }
-
-                } catch (e) {
-                    if (countdownInterval) clearInterval(countdownInterval);
-                    enableMaintenanceView("CHYBA SYSTÉMU", null, false);
+                } else {
+                    // 3. Bez spojení a bez cache -> pro jistotu pustíme dál
+                    if (!isInitiallyLoaded) {
+                        await simulateLoading(100, "Offline start");
+                        isInitiallyLoaded = true;
+                    }
+                    if (currentMaintenanceState || mainContent.style.display !== 'block') {
+                        currentMaintenanceState = false;
+                        disableMaintenanceView();
+                    }
                 }
             }
 
             async function init() {
                 await simulateLoading(35);
-                await checkSystemStatus();
-                checkStatusInterval = setInterval(checkSystemStatus, 5000);
+                
+                // První kontrola při načtení
+                await checkSystemStatus(); 
+                
+                // NONSTOP KONTROLA: Tady se nastavuje smyčka, která běží celou dobu
+                // 5000 = kontroluje každých 5 vteřin. Můžeš změnit podle potřeby.
+                checkStatusInterval = setInterval(checkSystemStatus, 5000); 
             }
 
             window.onload = init;
