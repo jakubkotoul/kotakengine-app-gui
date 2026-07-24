@@ -259,13 +259,6 @@
         .modal-btn:active { opacity: 0.8; }
         .modal-close { background: transparent; color: #94a3b8; margin-top: 5px; }
 
-        .device-info {
-            font-size: 0.75rem;
-            color: #64748b;
-            text-align: center;
-            margin-top: 10px;
-        }
-
         .form-group { margin-bottom: 15px; text-align: left; }
         .form-group label { display: block; font-size: 0.8rem; color: #94a3b8; margin-bottom: 6px; }
         .form-group input[type="text"] { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #fff; font-size: 1rem; }
@@ -447,7 +440,6 @@
         </div>
 
         <button class="modal-btn modal-close" onclick="closeModals()">Zrušit</button>
-        <div class="device-info" id="deviceCodeDisplay">ID zařízení: Načítám...</div>
     </div>
 
     <div class="modal" id="formModal">
@@ -473,6 +465,7 @@
     </div>
 
     <script>
+        // Registrace Service Workera pro PWA a auto-update z GitHubu
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('sw.js').catch(err => console.log('SW error:', err));
@@ -491,41 +484,10 @@
         };
 
         firebase.initializeApp(firebaseConfig);
+
         const db = firebase.database();
-
-        // ==========================================
-        // SPRÁVA 5MÍSTNÉHO KÓDU ZAŘÍZENÍ (VYLEPŠENO)
-        // ==========================================
-        let deviceCode = localStorage.getItem('kotak_device_code');
-        
-        // Zkontrolujeme, zda kód vůbec neexistuje, nebo je to nějaký starý nesmysl typu "null"
-        if (!deviceCode || deviceCode === "null" || deviceCode === "") {
-            deviceCode = Math.floor(10000 + Math.random() * 90000).toString();
-            localStorage.setItem('kotak_device_code', deviceCode);
-        }
-
-        // Vždycky kontrolujeme existenci zařízení ve Firebase
-        db.ref('devices/' + deviceCode).once('value').then((snapshot) => {
-            if (!snapshot.exists()) {
-                db.ref('devices/' + deviceCode).set({
-                    created_at: new Date().toISOString(),
-                    allowed_buttons: ["TEST 1", "TEST 2", "TEST 3", "TEST 4"]
-                }).then(() => {
-                    console.log("Zařízení zaregistrováno pod kódem: " + deviceCode);
-                    // Aktualizujeme UI v modalu s roomkama
-                    const display = document.getElementById('deviceCodeDisplay');
-                    if(display) display.innerText = `ID zařízení: ${deviceCode}`;
-                }).catch((err) => {
-                    console.error("Firebase zápis selhal:", err);
-                });
-            } else {
-                // Pokud už existuje, aspoň aktualizujeme UI v modalu
-                const display = document.getElementById('deviceCodeDisplay');
-                if(display) display.innerText = `ID zařízení: ${deviceCode}`;
-            }
-        });
-
         let currentRoom = localStorage.getItem('kotak_active_room') || "room1"; 
+
         let currentCards = []; 
         let activeEditingIndex = null; 
         let activeTopSheetIndex = null; 
@@ -533,9 +495,6 @@
 
         const cardList = document.getElementById('cardList');
 
-        // ==========================================
-        // DYNAMICKÁ TLAČÍTKA DLE OPRÁVNĚNÍ ZAŘÍZENÍ
-        // ==========================================
         function listenToMenuButtons() {
             const container = document.getElementById('dynamicMenuButtons');
             const cachedButtons = localStorage.getItem('kotak_menu_buttons');
@@ -543,34 +502,20 @@
                 try { renderMenuButtons(JSON.parse(cachedButtons)); } catch(e) {}
             }
 
-            // 1. Posloucháme povolená tlačítka pro tento konkrétní 5místný kód
-            db.ref('devices/' + deviceCode + '/allowed_buttons').on('value', (allowedSnap) => {
-                const allowedLabels = allowedSnap.val(); // Pole povolených názvů, např. ["TEST 3", "TEST 4"]
-
-                // 2. Posloucháme celkový seznam tlačítek z Firebase
-                db.ref('menu_buttons').on('value', (menuSnap) => {
-                    const data = menuSnap.val();
-                    if (data) {
-                        const allButtons = Array.isArray(data) ? data : Object.values(data);
-                        
-                        // Filtrování tlačítek podle oprávnění zařízení
-                        let filteredButtons = allButtons;
-                        if (allowedLabels && Array.isArray(allowedLabels)) {
-                            filteredButtons = allButtons.filter(b => allowedLabels.includes(b.label));
-                        }
-
-                        localStorage.setItem('kotak_menu_buttons', JSON.stringify(filteredButtons));
-                        renderMenuButtons(filteredButtons);
-                    } else {
-                        const defaultButtons = [
-                            { label: "TEST 1", url: "/button/1.html", icon: "💳" },
-                            { label: "TEST 2", url: "/button/2.html", icon: "📊" },
-                            { label: "TEST 3", url: "/button/3.html", icon: "⚙️" },
-                            { label: "TEST 4", url: "/button/4.html", icon: "🔥" }
-                        ];
-                        db.ref('menu_buttons').set(defaultButtons);
-                    }
-                });
+            db.ref('menu_buttons').on('value', (snapshot) => {
+                const data = snapshot.val();
+                if (data) {
+                    const buttons = Array.isArray(data) ? data : Object.values(data);
+                    localStorage.setItem('kotak_menu_buttons', JSON.stringify(buttons));
+                    renderMenuButtons(buttons);
+                } else {
+                    const defaultButtons = [
+                        { label: "TEST 1", url: "/button/1.html", icon: "💳" },
+                        { label: "TEST 2", url: "/button/2.html", icon: "📊" },
+                        { label: "TEST 3", url: "/button/3.html", icon: "⚙️" }
+                    ];
+                    db.ref('menu_buttons').set(defaultButtons);
+                }
             }, (error) => {
                 if (!localStorage.getItem('kotak_menu_buttons')) {
                     container.innerHTML = `<div class="offline-message">Offline mode</div>`;
@@ -582,7 +527,7 @@
             const container = document.getElementById('dynamicMenuButtons');
             container.innerHTML = '';
             if (!buttons || buttons.length === 0) {
-                container.innerHTML = `<div class="offline-message">Žádná tlačítka pro toto zařízení</div>`;
+                container.innerHTML = `<div class="offline-message">Offline mode</div>`;
                 return;
             }
             buttons.forEach(btnInfo => {
@@ -596,9 +541,6 @@
 
         listenToMenuButtons();
 
-        // ==========================================
-        // OFFLINE-FIRST NAČÍTÁNÍ KARET
-        // ==========================================
         function listenToRoomUpdates() {
             db.ref('rooms/' + currentRoom).off();
 
@@ -706,9 +648,6 @@
         function loadRoomsToModal() {
             const container = document.getElementById('roomButtonsContainer');
             container.innerHTML = '<p style="color: #94a3b8; text-align: center;">Načítám...</p>';
-
-            const display = document.getElementById('deviceCodeDisplay');
-            if(display) display.innerText = `ID zařízení: ${deviceCode}`;
 
             db.ref('rooms').once('value').then((snapshot) => {
                 container.innerHTML = '';
