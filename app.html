@@ -465,7 +465,7 @@
     </div>
 
     <script>
-        // Registrace Service Workera pro PWA a auto-update z GitHubu
+        // Registrace Service Workera pro PWA
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('sw.js').catch(err => console.log('SW error:', err));
@@ -484,17 +484,18 @@
         };
 
         firebase.initializeApp(firebaseConfig);
-
         const db = firebase.database();
-        let currentRoom = localStorage.getItem('kotak_active_room') || "room1"; 
 
+        let currentRoom = localStorage.getItem('kotak_active_room') || "room1"; 
         let currentCards = []; 
         let activeEditingIndex = null; 
         let activeTopSheetIndex = null; 
         let reorderIndex = null; 
-
         const cardList = document.getElementById('cardList');
 
+        // ==========================================
+        // DYNAMICKÁ TLAČÍTKA
+        // ==========================================
         function listenToMenuButtons() {
             const container = document.getElementById('dynamicMenuButtons');
             const cachedButtons = localStorage.getItem('kotak_menu_buttons');
@@ -526,10 +527,12 @@
         function renderMenuButtons(buttons) {
             const container = document.getElementById('dynamicMenuButtons');
             container.innerHTML = '';
+            
             if (!buttons || buttons.length === 0) {
                 container.innerHTML = `<div class="offline-message">Offline mode</div>`;
                 return;
             }
+            
             buttons.forEach(btnInfo => {
                 const btn = document.createElement('button');
                 let iconHtml = btnInfo.icon ? `<span class="btn-icon">${btnInfo.icon}</span>` : '';
@@ -541,6 +544,9 @@
 
         listenToMenuButtons();
 
+        // ==========================================
+        // OFFLINE-FIRST NAČÍTÁNÍ KARET
+        // ==========================================
         function listenToRoomUpdates() {
             db.ref('rooms/' + currentRoom).off();
 
