@@ -1,4 +1,4 @@
-const CACHE_NAME = 'kotakengine-cache-v4';
+const CACHE_NAME = 'kotakengine-cache-v5';
 
 // Používáme relativní cesty pro správné fungování na GitHub Pages
 const urlsToCache = [
