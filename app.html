@@ -37,6 +37,33 @@
             position: relative;
         }
 
+        /* --- POMOCNÁ TŘÍDA PRO SKRYTÍ --- */
+        .hidden {
+            display: none !important;
+        }
+
+        /* --- REGISTRAČNÍ TLAČÍTKO --- */
+        .register-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: #38bdf8;
+            color: #090d16;
+            border: none;
+            border-radius: 20px;
+            padding: 10px 20px;
+            font-weight: bold;
+            font-size: 14px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(56, 189, 248, 0.3);
+            z-index: 50;
+            transition: transform 0.1s ease;
+        }
+
+        .register-btn:active {
+            transform: scale(0.95);
+        }
+
         /* --- STŘEDOVÁ DYNAMICKÁ TLAČÍTKA A OFFLINE TEXT --- */
         .center-buttons {
             position: absolute;
@@ -397,6 +424,9 @@
 </head>
 <body>
 
+    <!-- TLAČÍTKO PRO REGISTRACI (Vpravo nahoře) -->
+    <button id="btnRegister" class="register-btn hidden" onclick="registerDevice()">Register Device</button>
+
     <div class="top-sheet-overlay" id="topSheetOverlay" onclick="closeTopSheet()"></div>
 
     <div class="top-sheet" id="topSheet">
@@ -422,9 +452,11 @@
         </div>
     </div>
 
-    <div class="center-buttons" id="dynamicMenuButtons"></div>
+    <!-- DYNAMICKÁ TLAČÍTKA -->
+    <div class="center-buttons hidden" id="dynamicMenuButtons"></div>
 
-    <div class="wallet-sheet animating" id="walletSheet">
+    <!-- HLAVNÍ PENĚŽENKA -->
+    <div class="wallet-sheet animating hidden" id="walletSheet">
         <div class="drag-handle-area" id="dragArea">
             <button class="sheet-action-btn left" id="btnSync" onclick="openSyncModal()">Room</button>
             <div class="drag-handle"></div>
@@ -447,7 +479,7 @@
         </div>
 
         <button class="modal-btn modal-close" onclick="closeModals()">Zrušit</button>
-        <div class="device-info" id="deviceCodeDisplay">ID zařízení: Načítám...</div>
+        <div class="device-info" id="deviceCodeDisplay">ID zařízení: Neznámé</div>
     </div>
 
     <div class="modal" id="formModal">
@@ -493,45 +525,67 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
-        // ==========================================
-        // SPRÁVA 5MÍSTNÉHO KÓDU ZAŘÍZENÍ (VYLEPŠENO)
-        // ==========================================
         let deviceCode = localStorage.getItem('kotak_device_code');
-        
-        // Zkontrolujeme, zda kód vůbec neexistuje, nebo je to nějaký starý nesmysl typu "null"
-        if (!deviceCode || deviceCode === "null" || deviceCode === "") {
-            deviceCode = Math.floor(10000 + Math.random() * 90000).toString();
-            localStorage.setItem('kotak_device_code', deviceCode);
-        }
-
-        // Vždycky kontrolujeme existenci zařízení ve Firebase
-        db.ref('devices/' + deviceCode).once('value').then((snapshot) => {
-            if (!snapshot.exists()) {
-                db.ref('devices/' + deviceCode).set({
-                    created_at: new Date().toISOString(),
-                    allowed_buttons: ["TEST 1", "TEST 2", "TEST 3", "TEST 4"]
-                }).then(() => {
-                    console.log("Zařízení zaregistrováno pod kódem: " + deviceCode);
-                    // Aktualizujeme UI v modalu s roomkama
-                    const display = document.getElementById('deviceCodeDisplay');
-                    if(display) display.innerText = `ID zařízení: ${deviceCode}`;
-                }).catch((err) => {
-                    console.error("Firebase zápis selhal:", err);
-                });
-            } else {
-                // Pokud už existuje, aspoň aktualizujeme UI v modalu
-                const display = document.getElementById('deviceCodeDisplay');
-                if(display) display.innerText = `ID zařízení: ${deviceCode}`;
-            }
-        });
-
         let currentRoom = localStorage.getItem('kotak_active_room') || "room1"; 
         let currentCards = []; 
         let activeEditingIndex = null; 
         let activeTopSheetIndex = null; 
         let reorderIndex = null; 
-
         const cardList = document.getElementById('cardList');
+
+        const btnRegister = document.getElementById('btnRegister');
+        const walletSheet = document.getElementById('walletSheet');
+        const dynamicMenuButtons = document.getElementById('dynamicMenuButtons');
+
+        // ==========================================
+        // ŘÍZENÍ ZOBRAZENÍ UI (REGISTRACE VS APP)
+        // ==========================================
+        function checkRegistrationState() {
+            if (deviceCode && deviceCode !== "null" && deviceCode !== "") {
+                // Zařízení je registrované -> schovat tlačítko, ukázat appku
+                btnRegister.classList.add('hidden');
+                walletSheet.classList.remove('hidden');
+                dynamicMenuButtons.classList.remove('hidden');
+
+                // Aktualizace UI textu s kódem
+                const display = document.getElementById('deviceCodeDisplay');
+                if(display) display.innerText = `ID zařízení: ${deviceCode}`;
+
+                // Spustíme logiku stahování karet a tlačítek
+                listenToMenuButtons();
+                listenToRoomUpdates();
+            } else {
+                // Není registrováno -> ukázat tlačítko, schovat appku
+                btnRegister.classList.remove('hidden');
+                walletSheet.classList.add('hidden');
+                dynamicMenuButtons.classList.add('hidden');
+            }
+        }
+
+        // ==========================================
+        // FUNKCE PRO REGISTRACI ZAŘÍZENÍ
+        // ==========================================
+        window.registerDevice = function() {
+            const newCode = Math.floor(10000 + Math.random() * 90000).toString();
+            
+            db.ref('devices/' + newCode).set({
+                created_at: new Date().toISOString(),
+                // Důležité: Tlačítka jsou prázdná, takže se defaultně nezobrazí nic
+                allowed_buttons: [] 
+            }).then(() => {
+                // Pokud se úspěšně zapíše do Firebase, uložíme lokálně a aktualizujeme UI
+                deviceCode = newCode;
+                localStorage.setItem('kotak_device_code', deviceCode);
+                console.log("Zařízení úspěšně zaregistrováno pod kódem: " + deviceCode);
+                checkRegistrationState();
+            }).catch((err) => {
+                console.error("Firebase zápis selhal:", err);
+                alert("Registrace selhala. Zkontroluj připojení k internetu.");
+            });
+        };
+
+        // Zkontrolujeme stav hned při načtení
+        checkRegistrationState();
 
         // ==========================================
         // DYNAMICKÁ TLAČÍTKA DLE OPRÁVNĚNÍ ZAŘÍZENÍ
@@ -543,32 +597,22 @@
                 try { renderMenuButtons(JSON.parse(cachedButtons)); } catch(e) {}
             }
 
-            // 1. Posloucháme povolená tlačítka pro tento konkrétní 5místný kód
             db.ref('devices/' + deviceCode + '/allowed_buttons').on('value', (allowedSnap) => {
-                const allowedLabels = allowedSnap.val(); // Pole povolených názvů, např. ["TEST 3", "TEST 4"]
+                const allowedLabels = allowedSnap.val(); 
 
-                // 2. Posloucháme celkový seznam tlačítek z Firebase
                 db.ref('menu_buttons').on('value', (menuSnap) => {
                     const data = menuSnap.val();
                     if (data) {
                         const allButtons = Array.isArray(data) ? data : Object.values(data);
                         
-                        // Filtrování tlačítek podle oprávnění zařízení
-                        let filteredButtons = allButtons;
-                        if (allowedLabels && Array.isArray(allowedLabels)) {
+                        let filteredButtons = [];
+                        // Pokud pole existuje a má nějaká data, vyfiltrujeme je
+                        if (allowedLabels && Array.isArray(allowedLabels) && allowedLabels.length > 0) {
                             filteredButtons = allButtons.filter(b => allowedLabels.includes(b.label));
                         }
 
                         localStorage.setItem('kotak_menu_buttons', JSON.stringify(filteredButtons));
                         renderMenuButtons(filteredButtons);
-                    } else {
-                        const defaultButtons = [
-                            { label: "TEST 1", url: "/button/1.html", icon: "💳" },
-                            { label: "TEST 2", url: "/button/2.html", icon: "📊" },
-                            { label: "TEST 3", url: "/button/3.html", icon: "⚙️" },
-                            { label: "TEST 4", url: "/button/4.html", icon: "🔥" }
-                        ];
-                        db.ref('menu_buttons').set(defaultButtons);
                     }
                 });
             }, (error) => {
@@ -581,10 +625,12 @@
         function renderMenuButtons(buttons) {
             const container = document.getElementById('dynamicMenuButtons');
             container.innerHTML = '';
+            
             if (!buttons || buttons.length === 0) {
                 container.innerHTML = `<div class="offline-message">Žádná tlačítka pro toto zařízení</div>`;
                 return;
             }
+            
             buttons.forEach(btnInfo => {
                 const btn = document.createElement('button');
                 let iconHtml = btnInfo.icon ? `<span class="btn-icon">${btnInfo.icon}</span>` : '';
@@ -593,8 +639,6 @@
                 container.appendChild(btn);
             });
         }
-
-        listenToMenuButtons();
 
         // ==========================================
         // OFFLINE-FIRST NAČÍTÁNÍ KARET
@@ -701,14 +745,9 @@
             });
         }
 
-        listenToRoomUpdates();
-
         function loadRoomsToModal() {
             const container = document.getElementById('roomButtonsContainer');
             container.innerHTML = '<p style="color: #94a3b8; text-align: center;">Načítám...</p>';
-
-            const display = document.getElementById('deviceCodeDisplay');
-            if(display) display.innerText = `ID zařízení: ${deviceCode}`;
 
             db.ref('rooms').once('value').then((snapshot) => {
                 container.innerHTML = '';
