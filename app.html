@@ -541,21 +541,36 @@
         // ŘÍZENÍ ZOBRAZENÍ UI (REGISTRACE VS APP)
         // ==========================================
         function checkRegistrationState() {
+            // Kontrola i zápisu ve Firebase, nejen lokální cache (robustnější)
             if (deviceCode && deviceCode !== "null" && deviceCode !== "") {
-                // Zařízení je registrované -> schovat tlačítko, ukázat appku
-                btnRegister.classList.add('hidden');
-                walletSheet.classList.remove('hidden');
-                dynamicMenuButtons.classList.remove('hidden');
+                db.ref('devices/' + deviceCode).once('value').then((snapshot) => {
+                    if (snapshot.exists()) {
+                        // Zaregistrováno a existuje ve Firebase
+                        btnRegister.classList.add('hidden');
+                        walletSheet.classList.remove('hidden');
+                        dynamicMenuButtons.classList.remove('hidden');
 
-                // Aktualizace UI textu s kódem
-                const display = document.getElementById('deviceCodeDisplay');
-                if(display) display.innerText = `ID zařízení: ${deviceCode}`;
+                        const display = document.getElementById('deviceCodeDisplay');
+                        if(display) display.innerText = `ID zařízení: ${deviceCode}`;
 
-                // Spustíme logiku stahování karet a tlačítek
-                listenToMenuButtons();
-                listenToRoomUpdates();
+                        listenToMenuButtons();
+                        listenToRoomUpdates();
+                    } else {
+                        // Má sice kód v telefonu, ale Firebase ho nezná -> ukázat registraci
+                        btnRegister.classList.remove('hidden');
+                        walletSheet.classList.add('hidden');
+                        dynamicMenuButtons.classList.add('hidden');
+                    }
+                }).catch(() => {
+                    // Pokud je offline, ale už má kód z dřívějška
+                    btnRegister.classList.add('hidden');
+                    walletSheet.classList.remove('hidden');
+                    dynamicMenuButtons.classList.remove('hidden');
+                    listenToMenuButtons();
+                    listenToRoomUpdates();
+                });
             } else {
-                // Není registrováno -> ukázat tlačítko, schovat appku
+                // Nemá vůbec kód -> ukázat registraci
                 btnRegister.classList.remove('hidden');
                 walletSheet.classList.add('hidden');
                 dynamicMenuButtons.classList.add('hidden');
@@ -569,11 +584,9 @@
             const newCode = Math.floor(10000 + Math.random() * 90000).toString();
             
             db.ref('devices/' + newCode).set({
-                created_at: new Date().toISOString(),
-                // Důležité: Tlačítka jsou prázdná, takže se defaultně nezobrazí nic
-                allowed_buttons: [] 
+                created_at: new Date().toISOString()
+                // allowed_buttons schválně vynecháváme -> nezobrazí žádná tlačítka
             }).then(() => {
-                // Pokud se úspěšně zapíše do Firebase, uložíme lokálně a aktualizujeme UI
                 deviceCode = newCode;
                 localStorage.setItem('kotak_device_code', deviceCode);
                 console.log("Zařízení úspěšně zaregistrováno pod kódem: " + deviceCode);
@@ -584,11 +597,10 @@
             });
         };
 
-        // Zkontrolujeme stav hned při načtení
         checkRegistrationState();
 
         // ==========================================
-        // DYNAMICKÁ TLAČÍTKA DLE OPRÁVNĚNÍ ZAŘÍZENÍ
+        // DYNAMICKÁ TLAČÍTKA S ID FILTROVÁNÍM
         // ==========================================
         function listenToMenuButtons() {
             const container = document.getElementById('dynamicMenuButtons');
@@ -597,22 +609,33 @@
                 try { renderMenuButtons(JSON.parse(cachedButtons)); } catch(e) {}
             }
 
+            // 1. Zjištění povolených ID pro toto zařízení (např. ["test_3", "test_4"])
             db.ref('devices/' + deviceCode + '/allowed_buttons').on('value', (allowedSnap) => {
-                const allowedLabels = allowedSnap.val(); 
+                const allowedIds = allowedSnap.val(); 
 
+                // 2. Načtení všech dostupných tlačítek
                 db.ref('menu_buttons').on('value', (menuSnap) => {
                     const data = menuSnap.val();
                     if (data) {
                         const allButtons = Array.isArray(data) ? data : Object.values(data);
                         
                         let filteredButtons = [];
-                        // Pokud pole existuje a má nějaká data, vyfiltrujeme je
-                        if (allowedLabels && Array.isArray(allowedLabels) && allowedLabels.length > 0) {
-                            filteredButtons = allButtons.filter(b => allowedLabels.includes(b.label));
+                        // Filtrování pomocí vlastnosti ID
+                        if (allowedIds && Array.isArray(allowedIds) && allowedIds.length > 0) {
+                            filteredButtons = allButtons.filter(b => allowedIds.includes(b.id));
                         }
 
                         localStorage.setItem('kotak_menu_buttons', JSON.stringify(filteredButtons));
                         renderMenuButtons(filteredButtons);
+                    } else {
+                        // Vygenerování výchozích tlačítek (teď i s 'id')
+                        const defaultButtons = [
+                            { id: "test_1", label: "TEST 1", url: "/button/1.html", icon: "💳" },
+                            { id: "test_2", label: "TEST 2", url: "/button/2.html", icon: "📊" },
+                            { id: "test_3", label: "TEST 3", url: "/button/3.html", icon: "⚙️" },
+                            { id: "test_4", label: "TEST 4", url: "/button/4.html", icon: "🔥" }
+                        ];
+                        db.ref('menu_buttons').set(defaultButtons);
                     }
                 });
             }, (error) => {
