@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>KotakEngine</title>
 
-    <!-- PWA Instalace a zobrazení bez lišty prohlížeče -->
     <link rel="manifest" href="./manifest.json">
     <meta name="theme-color" content="#000000">
     <meta name="mobile-web-app-capable" content="yes">
@@ -110,7 +109,6 @@
             const mainContent = document.getElementById('main-content');
 
             let countdownInterval;
-            let checkStatusInterval; // Tento interval zajišťuje nonstop kontrolu
             let isInitiallyLoaded = false;
             let currentMaintenanceState = false;
 
@@ -165,12 +163,7 @@
                     const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
                     const seconds = Math.floor((distance % (1000 * 60)) / 1000);
 
-                    const dStr = String(days).padStart(2, '0');
-                    const hStr = String(hours).padStart(2, '0');
-                    const mStr = String(minutes).padStart(2, '0');
-                    const sStr = String(seconds).padStart(2, '0');
-
-                    countdownTimer.innerText = `${dStr}d ${hStr}h ${mStr}m ${sStr}s`;
+                    countdownTimer.innerText = `${String(days).padStart(2, '0')}d ${String(hours).padStart(2, '0')}h ${String(minutes).padStart(2, '0')}m ${String(seconds).padStart(2, '0')}s`;
                 }
 
                 updateTimer();
@@ -209,78 +202,40 @@
                 loaderText.style.textShadow = "0 0 5px #00c853";
 
                 mainContent.style.display = 'block';
+                // Přidáme náhodný parametr, aby iframe pokaždé vytáhl nejčerstvější app.html bez vnitřní cache prohlížeče
                 if (mainContent.src === 'about:blank' || mainContent.src === '') {
-                    mainContent.src = './app.html';
+                    mainContent.src = './app.html?v=' + Date.now();
                 }
 
                 loaderOverlay.classList.add('loader-hide');
             }
 
-            // Tato funkce se volá pořád dokola díky setInterval
             async function checkSystemStatus() {
                 let data = null;
-
                 try {
-                    // 1. Pokus o stažení nejnovějšího stavu ze serveru
                     const response = await fetch('./maintenance.json?t=' + Date.now(), { cache: 'no-store' });
-                    if (response.ok) {
-                        data = await response.json();
-                    } else {
-                        throw new Error("Server nevrátil 200 OK");
-                    }
-                } catch (e) {
-                    // 2. Fallback: Pokud jsme offline, vytáhneme data z PWA mezipaměti
-                    try {
-                        const cachedResponse = await fetch('./maintenance.json');
-                        if (cachedResponse.ok) {
-                            data = await cachedResponse.json();
-                        }
-                    } catch (cacheError) {
-                        // Nic se nenašlo ani v cache
-                    }
-                }
+                    if (response.ok) data = await response.json();
+                } catch (e) {}
 
                 if (data) {
                     const now = new Date();
                     const startTime = parseDateString(data.start);
                     const endTime = parseDateString(data.end);
-
-                    let isMaintenance = false;
-                    const statusText = "MAINTENANCE MODE";
-
-                    if (data.forced === true) {
-                        isMaintenance = true;
-                    } 
-                    else if (startTime && endTime && now >= startTime && now <= endTime) {
-                        isMaintenance = true;
-                    }
+                    let isMaintenance = data.forced === true || (startTime && endTime && now >= startTime && now <= endTime);
 
                     if (isMaintenance) {
                         currentMaintenanceState = true;
-                        const showCountdown = (data["show-endtime"] && endTime && endTime > now);
-
-                        if (!isInitiallyLoaded) {
-                            await simulateLoading(100, "Prověřování systému");
-                            isInitiallyLoaded = true;
-                        }
-                        enableMaintenanceView(statusText, endTime, showCountdown);
+                        if (!isInitiallyLoaded) { await simulateLoading(100, "Prověřování systému"); isInitiallyLoaded = true; }
+                        enableMaintenanceView("MAINTENANCE MODE", endTime, data["show-endtime"] && endTime && endTime > now);
                     } else {
-                        if (!isInitiallyLoaded) {
-                            await simulateLoading(100);
-                            isInitiallyLoaded = true;
-                        }
-
+                        if (!isInitiallyLoaded) { await simulateLoading(100); isInitiallyLoaded = true; }
                         if (currentMaintenanceState || mainContent.style.display !== 'block') {
                             currentMaintenanceState = false;
                             disableMaintenanceView();
                         }
                     }
                 } else {
-                    // 3. Bez spojení a bez cache -> pro jistotu pustíme dál
-                    if (!isInitiallyLoaded) {
-                        await simulateLoading(100, "Offline start");
-                        isInitiallyLoaded = true;
-                    }
+                    if (!isInitiallyLoaded) { await simulateLoading(100, "Offline start"); isInitiallyLoaded = true; }
                     if (currentMaintenanceState || mainContent.style.display !== 'block') {
                         currentMaintenanceState = false;
                         disableMaintenanceView();
@@ -290,21 +245,27 @@
 
             async function init() {
                 await simulateLoading(35);
-                
-                // První kontrola při načtení
                 await checkSystemStatus(); 
-                
-                // NONSTOP KONTROLA: Tady se nastavuje smyčka, která běží celou dobu
-                // 5000 = kontroluje každých 5 vteřin. Můžeš změnit podle potřeby.
-                checkStatusInterval = setInterval(checkSystemStatus, 5000); 
+                setInterval(checkSystemStatus, 10000); 
             }
 
             window.onload = init;
 
+            // ZDE JE KLÍČOVÁ REGISTRACE SW S OKAMŽITOU AKTUALIZACÍ
             if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.register('./sw.js')
-                .then(() => console.log("KotakEngine PWA - Registrace úspěšná."))
-                .catch(err => console.error("PWA Error:", err));
+                navigator.serviceWorker.register('./sw.js').then(reg => {
+                    reg.update(); // Vynutí kontrolu nového sw.js na GitHubu při každém startu
+                    
+                    reg.addEventListener('updatefound', () => {
+                        const installingWorker = reg.installing;
+                        installingWorker.addEventListener('statechange', () => {
+                            if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                // Jakmile se stáhne nový SW, stránka se hned sama reloadne do nové verze
+                                window.location.reload();
+                            }
+                        });
+                    });
+                }).catch(err => console.error("PWA Error:", err));
             }
         })();
     </script>
