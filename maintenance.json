@@ -1,5 +1,5 @@
 {
-  "forced": true,
+  "forced": false,
   "show-endtime": false,
   "start": "25 5 2026 18:00",
   "end": "26 5 2026 16:00"
