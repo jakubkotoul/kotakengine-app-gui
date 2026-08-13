@@ -359,9 +359,10 @@
             document.getElementById('notifModal').classList.remove('active');
         }
 
+        // --- ODESÍLÁNÍ REÁLNÝCH SYSTÉMOVÝCH NOTIFIKACÍ ---
         function sendPresetNotification(text) {
             closeNotificationModal();
-            alert("Odesláno oznámení:\n\n" + text);
+            triggerSystemNotification("KotakEngine Upozornění", text);
         }
 
         function sendCustomNotification() {
@@ -371,7 +372,46 @@
                 return;
             }
             closeNotificationModal();
-            alert("Odesláno oznámení:\n\n" + customText);
+            triggerSystemNotification("KotakEngine Upozornění", customText);
+        }
+
+        function triggerSystemNotification(title, body) {
+            if (!("Notification" in window)) {
+                alert("Tento prohlížeč nepodporuje notifikace.");
+                return;
+            }
+
+            if (Notification.permission === "granted") {
+                showNotificationActive(title, body);
+            } else if (Notification.permission !== "denied") {
+                Notification.requestPermission().then(permission => {
+                    if (permission === "granted") {
+                        showNotificationActive(title, body);
+                    } else {
+                        alert("Oprávnění k notifikacím bylo zamítnuto.");
+                    }
+                });
+            } else {
+                alert("Notifikace jsou zakázané. Povol je v nastavení prohlížeče.");
+            }
+        }
+
+        function showNotificationActive(title, body) {
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.ready.then(registration => {
+                    registration.showNotification(title, {
+                        body: body,
+                        icon: 'logo.png',
+                        badge: 'logo.png',
+                        vibrate: [200, 100, 200]
+                    });
+                }).catch(err => {
+                    console.error("Chyba při spouštění notifikace přes SW:", err);
+                    new Notification(title, { body: body });
+                });
+            } else {
+                new Notification(title, { body: body });
+            }
         }
 
         // --- FORMULÁŘ ---

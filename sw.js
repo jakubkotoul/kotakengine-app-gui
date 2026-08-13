@@ -1,11 +1,11 @@
-const CACHE_NAME = 'kotakengine-v4';
+const CACHE_NAME = 'kotakengine-v5';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
-  './app.html',
+  './balance.html',
   './manifest.json',
   './logo.png'
-  // money.html záměrně vynecháváme, aby se necachoval
+  // balance.html záměrně necachujeme v assetech, aby se netahal ze staré cache
 ];
 
 // Instalace Service Workeru
@@ -34,14 +34,38 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
+// --- PŘÍJEM A ZOBRAZENÍ PUSH NOTIFIKACÍ ---
+self.addEventListener('push', (event) => {
+    const data = event.data ? event.data.json() : { title: 'KotakEngine', body: 'Nové oznámení' };
+    
+    const options = {
+        body: data.body,
+        icon: 'logo.png',
+        badge: 'logo.png',
+        vibrate: [200, 100, 200]
+    };
+
+    event.waitUntil(
+        self.registration.showNotification(data.title, options)
+    );
+});
+
+// Kliknutí na notifikaci otevře aplikaci
+self.addEventListener('notificationclick', (event) => {
+    event.notification.close();
+    event.waitUntil(
+        clients.openWindow('./index.html')
+    );
+});
+
 // Strategie načítání
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
 
   const url = new URL(event.request.url);
 
-  // SPECIÁLNÍ PRAVIDLO PRO IFRAME S PENĚZI (zde zadej přesný název tvého souboru)
-  if (url.pathname.endsWith('money.html')) {
+  // SPECIÁLNÍ PRAVIDLO PRO IFRAME S BALANCE (balance.html)
+  if (url.pathname.endsWith('balance.html')) {
     event.respondWith(
       fetch(event.request)
         .catch(() => {
@@ -49,9 +73,9 @@ self.addEventListener('fetch', (event) => {
           return new Response(`
             <html>
               <head><meta charset="UTF-8"><title>Offline</title></head>
-              <body style="background:#111; color:#ff5555; font-family:sans-serif; text-align:center; padding-top:40vh; margin:0;">
-                <h3>Chybí připojení k internetu</h3>
-                <p style="font-size: 14px; color: #888;">Tato sekce nelze v offline režimu zobrazit.</p>
+              <body style="background:#090d16; color:#ef4444; font-family:sans-serif; text-align:center; padding-top:40vh; margin:0;">
+                <h3 style="font-size: 16px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;">Chybí připojení k internetu</h3>
+                <p style="font-size: 13px; color: #64748b; margin-top: 5px;">Tato sekce nelze v offline režimu načíst.</p>
               </body>
             </html>
           `, {
@@ -63,7 +87,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Zbytek aplikace funguje normálně (přes síť, s fallbackem do cache při offline)
+  // Zbytek aplikace (karty, PWA shell) funguje normálně s fallbackem do cache
   event.respondWith(
     fetch(event.request)
       .then((networkResponse) => {
