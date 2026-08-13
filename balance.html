@@ -38,17 +38,18 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            padding: 25px 20px 10px 20px;
+            padding: 20px 20px 10px 20px;
             flex-shrink: 0;
         }
 
         .balance-value {
-            font-size: 64px;
+            font-size: 58px;
             font-weight: bold;
             cursor: pointer;
             user-select: none;
             transition: color 0.3s ease, text-shadow 0.3s ease;
             text-align: center;
+            transform-origin: center;
         }
 
         /* Barvy zůstatku */
@@ -65,55 +66,56 @@
             text-shadow: 0 4px 20px rgba(239, 68, 68, 0.3);
         }
 
-        /* Pulzování při zapnutém upozornění */
+        /* Výrazné pulzování */
         .balance-value.pulsing {
-            animation: pulse-balance 1s infinite alternate;
+            animation: pulse-heavy 0.8s infinite alternate ease-in-out;
         }
-        @keyframes pulse-balance {
+        @keyframes pulse-heavy {
             0% { transform: scale(1); opacity: 1; }
-            100% { transform: scale(1.04); opacity: 0.7; }
+            100% { transform: scale(1.18); opacity: 0.6; }
         }
 
-        /* Úzký graf pod částkou */
-        .balance-bar-container {
-            width: 80%;
-            max-width: 280px;
-            height: 4px;
-            background: rgba(148, 163, 184, 0.2);
-            border-radius: 2px;
-            margin-top: 10px;
-            overflow: hidden;
+        /* SVG Lomený graf pod částkou (posledních 10 zápisů) */
+        .trend-chart-container {
+            width: 180px;
+            height: 35px;
+            margin-top: 8px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
         }
-        .balance-bar-fill {
+        .trend-chart-container svg {
+            width: 100%;
             height: 100%;
-            width: 0%;
-            background: #38bdf8;
-            border-radius: 2px;
-            transition: width 0.4s ease, background-color 0.3s ease;
+            overflow: visible;
         }
 
-        /* --- EDIT MODE TLAČÍTKA (Místo grafu/pod částkou) --- */
+        /* --- EDIT MODE TLAČÍTKA (Vedle sebe v jedné řadě) --- */
         .edit-panel {
             display: none;
-            width: 90%;
-            max-width: 360px;
+            width: 100%;
+            max-width: 380px;
             margin-top: 12px;
-            gap: 8px;
+            gap: 6px;
             justify-content: center;
-            flex-wrap: wrap;
+            flex-wrap: nowrap;
             flex-shrink: 0;
+            padding: 0 10px;
         }
         .edit-panel.visible { display: flex; }
         
         .edit-btn {
-            padding: 8px 14px;
-            border-radius: 14px;
+            flex: 1;
+            padding: 8px 4px;
+            border-radius: 10px;
             border: 1px solid rgba(148, 163, 184, 0.2);
             background: #1e293b;
             color: #f1f5f9;
-            font-size: 13px;
+            font-size: 12px;
             font-weight: bold;
             cursor: pointer;
+            text-align: center;
+            white-space: nowrap;
             transition: background 0.2s;
         }
         .edit-btn:active { background: #334155; }
@@ -188,12 +190,12 @@
     <div class="balance-display" id="balanceDisplay">
         <div class="balance-value color-green" id="balanceValue" onclick="handleBalanceTap()">0 Kč</div>
         
-        <!-- Úzký graf pod zůstatkem -->
-        <div class="balance-bar-container">
-            <div class="balance-bar-fill" id="balanceBarFill"></div>
+        <!-- Lomený graf pro posledních 10 zápisů -->
+        <div class="trend-chart-container">
+            <svg id="trendSvg" viewBox="0 0 180 35"></svg>
         </div>
 
-        <!-- EDIT MODE TLAČÍTKA (zobrazí se po 10 kliknutích) -->
+        <!-- EDIT MODE TLAČÍTKA V JEDNÉ ŘADĚ -->
         <div class="edit-panel" id="editPanel">
             <button class="edit-btn" id="btnPulseToggle" onclick="togglePulseNotification()">Upozornit</button>
             <button class="edit-btn" onclick="openBalanceForm(true)">Odebrat</button>
@@ -280,7 +282,7 @@
             document.getElementById('editPanel').classList.add('visible');
         }
 
-        // --- TLAČÍTKO UPOZORNIT (PULZOVÁNÍ) ---
+        // --- TLAČÍTKO UPOZORNIT (VÝRAZNÉ PULZOVÁNÍ) ---
         let isPulsingActive = localStorage.getItem('kotak_pulse_active') === '1';
         if (isPulsingActive) {
             document.getElementById('balanceValue').classList.add('pulsing');
@@ -350,10 +352,67 @@
             closeBalanceForm();
         }
 
-        // --- AKTUALIZACE ZŮSTATKU, BAREV A GRAFU ---
+        // --- VYKRESLENÍ LOMENÉHO GRAFU (POSLEDNÍCH 10 ZÁPISŮ) ---
+        function renderTrendChart(history) {
+            const svg = document.getElementById('trendSvg');
+            svg.innerHTML = '';
+
+            if (!history || history.length === 0) return;
+
+            // Vezmeme maximálně posledních 10 záznamů a spočítáme průběžný zůstatek v čase
+            const last10 = history.slice(-10);
+            let runningSum = 0;
+            const points = last10.map(item => {
+                const amount = Number(item.number) || 0;
+                runningSum += (item.negative ? -amount : amount);
+                return runningSum;
+            });
+
+            if (points.length < 2) return; // Pro lomenou čáru potřebujeme alespoň 2 body
+
+            const min = Math.min(...points);
+            const max = Math.max(...points);
+            const range = max - min === 0 ? 1 : max - min;
+
+            const width = 180;
+            const height = 35;
+            const padding = 5;
+
+            const coords = points.map((val, index) => {
+                const x = (index / (points.length - 1)) * (width - padding * 2) + padding;
+                // Osa Y je invertovaná (SVG má 0 nahoře)
+                const y = height - padding - ((val - min) / range) * (height - padding * 2);
+                return { x, y };
+            });
+
+            // Sestavení SVG polyline bodů
+            const ptsString = coords.map(c => `${c.x},${c.y}`).join(' ');
+
+            const polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+            polyline.setAttribute('points', ptsString);
+            polyline.setAttribute('fill', 'none');
+            polyline.setAttribute('stroke', '#38bdf8');
+            polyline.setAttribute('stroke-width', '2.5');
+            polyline.setAttribute('stroke-linecap', 'round');
+            polyline.setAttribute('stroke-linejoin', 'round');
+            svg.appendChild(polyline);
+
+            // Vykreslení malých bodů na vrcholech
+            coords.forEach(c => {
+                const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                circle.setAttribute('cx', c.x);
+                circle.setAttribute('cy', c.y);
+                circle.setAttribute('r', '3');
+                circle.setAttribute('fill', '#090d16');
+                circle.setAttribute('stroke', '#38bdf8');
+                circle.setAttribute('stroke-width', '2');
+                svg.appendChild(circle);
+            });
+        }
+
+        // --- AKTUALIZACE ZŮSTATKU A BAREV ---
         function updateBalanceDisplay(history) {
             const valueEl = document.getElementById('balanceValue');
-            const fillEl = document.getElementById('balanceBarFill');
 
             const sum = (history || []).reduce((acc, item) => {
                 if (!item) return acc;
@@ -363,24 +422,20 @@
 
             valueEl.textContent = `${formatBalance(sum)} Kč`;
 
-            // Změna barev podle hodnoty
+            // Změna barev podle nových limitů (<100 červená, 100-200 žlutá, >200 zelená)
             valueEl.className = 'balance-value';
             if (isPulsingActive) valueEl.classList.add('pulsing');
 
-            if (sum > 1000) {
+            if (sum > 200) {
                 valueEl.classList.add('color-green');
-                fillEl.style.backgroundColor = '#22c55e';
-            } else if (sum >= 300) {
+            } else if (sum >= 100) {
                 valueEl.classList.add('color-yellow');
-                fillEl.style.backgroundColor = '#eab308';
             } else {
                 valueEl.classList.add('color-red');
-                fillEl.style.backgroundColor = '#ef4444';
             }
 
-            // Výpočet šířky grafu (max 5000 Kč = 100% pro ukázku)
-            let percentage = Math.max(0, Math.min(100, (sum / 5000) * 100));
-            fillEl.style.width = `${percentage}%`;
+            // Vykreslení lomeného grafu
+            renderTrendChart(history);
         }
 
         // --- HISTORIE A EDITACE POLOŽEK ---
