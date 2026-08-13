@@ -1,32 +1,31 @@
-const CACHE_NAME = 'kotakengine-cache-v7'; // Zvedni číslo verze, až to budeš nahrávat
-
-const urlsToCache = [
+const CACHE_NAME = 'kotakengine-v2';
+const ASSETS_TO_CACHE = [
   './',
   './index.html',
   './app.html',
   './manifest.json',
-  './icon-192.png',
-  './icon-512.png',
-  './logo.png',
-  './maintenance.json',
-  'https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js'
+  './logo.png'
+  // Přidej sem další klíčové statické soubory, pokud je potřebuješ
 ];
 
-self.addEventListener('install', event => {
-  self.skipWaiting();
+// Instalace Service Workeru a uložení základních souborů do cache
+self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(urlsToCache))
+    caches.open(CACHE_NAME).then((cache) => {
+      return cache.addAll(ASSETS_TO_CACHE);
+    })
   );
+  self.skipWaiting();
 });
 
-self.addEventListener('activate', event => {
+// Aktivace a smazání starých cache verzí
+self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then(cacheNames => {
+    caches.keys().then((keys) => {
       return Promise.all(
-        cacheNames.map(cacheName => {
-          if (cacheName !== CACHE_NAME) {
-            return caches.delete(cacheName);
+        keys.map((key) => {
+          if (key !== CACHE_NAME) {
+            return caches.delete(key);
           }
         })
       );
@@ -35,45 +34,31 @@ self.addEventListener('activate', event => {
   self.clients.claim();
 });
 
-self.addEventListener('fetch', event => {
-  const requestUrl = new URL(event.request.url);
+// Strategie: Network First (Sítě napřed, při offlinefallback do cache)
+self.addEventListener('fetch', (event) => {
+  // Ignorovat požadavky, které nejsou GET (např. rozšíření apod.)
+  if (event.request.method !== 'GET') return;
 
-  // Firebase necacheujeme vůbec
-  if (requestUrl.hostname.includes('firebase')) {
-    event.respondWith(fetch(event.request));
-    return;
-  }
-
-  // PRO APP.HTML A INDEX.HTML: Vždy zkusit nejprve síť (GitHub), až pak cache (Network-First)
-  if (requestUrl.pathname.endsWith('app.html') || requestUrl.pathname.endsWith('index.html') || requestUrl.pathname.endsWith('/')) {
-    event.respondWith(
-      fetch(event.request)
-        .then(networkResponse => {
-          return caches.open(CACHE_NAME).then(cache => {
-            cache.put(event.request, networkResponse.clone());
-            return networkResponse;
-          });
-        })
-        .catch(() => {
-          return caches.match(event.request);
-        })
-    );
-    return;
-  }
-
-  // Ostatní statické soubory (knihovny, obrázky)
   event.respondWith(
-    caches.match(event.request, { ignoreSearch: true }).then(cachedResponse => {
-      const fetchPromise = fetch(event.request).then(networkResponse => {
-        if (networkResponse && networkResponse.status === 200) {
-          caches.open(CACHE_NAME).then(cache => {
-            cache.put(event.request, networkResponse.clone());
-          });
-        }
-        return networkResponse;
-      }).catch(() => {});
-
-      return cachedResponse || fetchPromise;
-    })
+    fetch(event.request)
+      .then((networkResponse) => {
+        // Pokud jsme online, odpovíme ze sítě a zároveň si aktualizujeme cache
+        return caches.open(CACHE_NAME).then((cache) => {
+          cache.put(event.request, networkResponse.clone());
+          return networkResponse;
+        });
+      })
+      .catch(() => {
+        // Pokud spadne internet, vytáhneme poslední známou verzi z cache
+        return caches.match(event.request).then((cachedResponse) => {
+          if (cachedResponse) {
+            return cachedResponse;
+          }
+          // Fallback, pokud není k dispozici v cache ani v síti
+          if (event.request.headers.get('accept').includes('text/html')) {
+            return caches.match('./index.html');
+          }
+        });
+      })
   );
 });

@@ -2,272 +2,57 @@
 <html lang="cs">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>KotakEngine</title>
-
-    <link rel="manifest" href="./manifest.json">
-    <meta name="theme-color" content="#000000">
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="KotakEngine">
-    <link rel="apple-touch-icon" href="./icon-192.png">
-
+    <!-- Odkaz na manifest pro PWA -->
+    <link rel="manifest" href="manifest.json">
     <style>
-        body { 
-            font-family: 'Consolas', 'Monaco', 'Courier New', monospace; 
-            background: #0a0a0a; 
-            color: white; 
-            margin: 0; padding: 0;
-            height: 100vh; width: 100vw;
-            overflow: hidden; 
-            display: flex; flex-direction: column;
-            align-items: center; justify-content: center; 
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #000;
         }
-
-        #loader-overlay {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: #0a0a0a; display: flex; flex-direction: column;
-            align-items: center; z-index: 100; padding: 40px 0; box-sizing: border-box;
-            transition: transform 0.8s cubic-bezier(0.25, 1, 0.5, 1);
-        }
-
-        #loader-logo { 
-            max-width: 150px; height: auto; 
-            margin-top: auto; margin-bottom: auto; 
-            transition: filter 0.7s ease-in-out, transform 0.7s ease-in-out;
-            filter: brightness(1) grayscale(0);
-        }
-
-        #loader-text { 
-            font-size: 1.1rem; color: #00c853; margin-bottom: 15px; 
-            text-shadow: 0 0 5px #00c853; text-align: center;
-            transition: all 0.5s ease;
-        }
-
-        .progress-container { 
-            width: 250px; height: 6px; background: #1a1a1a; 
-            border-radius: 10px; overflow: hidden; border: 1px solid #333; margin-bottom: 20px;
-        }
-
-        #progress-bar { 
-            height: 100%; width: 0%; background: #00c853; 
-            box-shadow: 0 0 10px #00c853; 
-            transition: width 0.15s ease-out, background 0.5s ease-in-out, box-shadow 0.5s ease-in-out; 
-        }
-
-        #countdown-box {
-            display: none;
-            font-size: 0.95rem;
-            color: #888;
-            margin-top: 5px;
-            letter-spacing: 1px;
-        }
-
-        .logo-maintenance {
-            filter: grayscale(100%) sepia(100%) saturate(100%) hue-rotate(320deg) brightness(1.2) drop-shadow(0 0 20px #ff0000) !important;
-            transform: scale(1.05); 
-        }
-
-        .bar-maintenance {
-            background: #ff0000 !important;
-            box-shadow: 0 0 15px #ff0000 !important;
-        }
-
-        #main-content {
-            display: none;
-            width: 100vw; height: 100vh;
+        iframe {
+            width: 100%;
+            height: 100%;
             border: none;
-            margin: 0; padding: 0;
-            background: #0a0a0a;
-        }
-
-        .loader-hide {
-            transform: translateY(-100%);
         }
     </style>
 </head>
 <body>
 
-    <div id="loader-overlay">
-        <img src="./logo.png" alt="Logo" id="loader-logo">
-        <div id="loader-text">KotakEngine - Inicializace [0]%</div>
-        <div class="progress-container"><div id="progress-bar"></div></div>
-        <div id="countdown-box">Termination for: <span id="countdown-timer">--:--:--:--</span></div>
-    </div>
-
-    <iframe id="main-content" src="about:blank"></iframe>
+    <!-- Tvůj iframe, který načítá app.html -->
+    <iframe src="app.html" id="appFrame" title="KotakEngine App"></iframe>
 
     <script>
-        (function() {
-            const loaderOverlay = document.getElementById('loader-overlay');
-            const progressBar = document.getElementById('progress-bar');
-            const loaderText = document.getElementById('loader-text');
-            const loaderLogo = document.getElementById('loader-logo'); 
-            const countdownBox = document.getElementById('countdown-box');
-            const countdownTimer = document.getElementById('countdown-timer');
-            const mainContent = document.getElementById('main-content');
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                // Registrace Service Workeru
+                navigator.serviceWorker.register('./sw.js')
+                    .then((registration) => {
+                        console.log('SW registrován pro:', registration.scope);
 
-            let countdownInterval;
-            let isInitiallyLoaded = false;
-            let currentMaintenanceState = false;
+                        // Automatická kontrola aktualizací při každém otevření
+                        registration.update();
 
-            function parseDateString(str) {
-                if (!str) return null;
-                const parts = str.split(' ');
-                if (parts.length !== 4) return null;
-                const day = parseInt(parts[0], 10);
-                const month = parseInt(parts[1], 10) - 1;
-                const year = parseInt(parts[2], 10);
-                const timeParts = parts[3].split(':');
-                const hours = parseInt(timeParts[0], 10);
-                const minutes = parseInt(timeParts[1], 10);
-                return new Date(year, month, day, hours, minutes);
-            }
-
-            function simulateLoading(target, textPrefix = "KotakEngine - Načítání") {
-                return new Promise((resolve) => {
-                    let progress = parseInt(progressBar.style.width) || 0;
-                    if (progress >= target) return resolve();
-
-                    const interval = setInterval(() => {
-                        progress += Math.floor(Math.random() * 8) + 4;
-                        if (progress >= target) {
-                            progress = target;
-                            clearInterval(interval);
-                            resolve();
-                        }
-                        progressBar.style.width = progress + '%';
-                        loaderText.innerText = `${textPrefix} [${progress}]%`;
-                    }, 80);
-                });
-            }
-
-            function startCountdown(targetTime) {
-                if (countdownInterval) clearInterval(countdownInterval);
-                countdownBox.style.display = "block";
-
-                function updateTimer() {
-                    const now = new Date().getTime();
-                    const distance = targetTime - now;
-
-                    if (distance < 0) {
-                        clearInterval(countdownInterval);
-                        countdownTimer.innerText = "00:00:00:00";
-                        checkSystemStatus();
-                        return;
-                    }
-
-                    const days = Math.floor(distance / (1000 * 60 * 60 * 24));
-                    const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-                    const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
-                    const seconds = Math.floor((distance % (1000 * 60)) / 1000);
-
-                    countdownTimer.innerText = `${String(days).padStart(2, '0')}d ${String(hours).padStart(2, '0')}h ${String(minutes).padStart(2, '0')}m ${String(seconds).padStart(2, '0')}s`;
-                }
-
-                updateTimer();
-                countdownInterval = setInterval(updateTimer, 1000);
-            }
-
-            function enableMaintenanceView(text, targetTime, showCountdown) {
-                mainContent.style.display = 'none';
-                mainContent.src = 'about:blank'; 
-                loaderOverlay.classList.remove('loader-hide');
-
-                loaderLogo.classList.add('logo-maintenance');
-                progressBar.classList.add('bar-maintenance');
-                progressBar.style.width = '100%';
-
-                loaderText.innerText = text;
-                loaderText.style.color = "#ff0000";
-                loaderText.style.textShadow = "0 0 10px #ff0000";
-
-                if (showCountdown && targetTime) {
-                    startCountdown(targetTime.getTime());
-                } else {
-                    if (countdownInterval) clearInterval(countdownInterval);
-                    countdownBox.style.display = "none";
-                }
-            }
-
-            function disableMaintenanceView() {
-                if (countdownInterval) clearInterval(countdownInterval);
-                countdownBox.style.display = "none";
-
-                loaderLogo.classList.remove('logo-maintenance');
-                progressBar.classList.remove('bar-maintenance');
-
-                loaderText.style.color = "#00c853";
-                loaderText.style.textShadow = "0 0 5px #00c853";
-
-                mainContent.style.display = 'block';
-                // Přidáme náhodný parametr, aby iframe pokaždé vytáhl nejčerstvější app.html bez vnitřní cache prohlížeče
-                if (mainContent.src === 'about:blank' || mainContent.src === '') {
-                    mainContent.src = './app.html?v=' + Date.now();
-                }
-
-                loaderOverlay.classList.add('loader-hide');
-            }
-
-            async function checkSystemStatus() {
-                let data = null;
-                try {
-                    const response = await fetch('./maintenance.json?t=' + Date.now(), { cache: 'no-store' });
-                    if (response.ok) data = await response.json();
-                } catch (e) {}
-
-                if (data) {
-                    const now = new Date();
-                    const startTime = parseDateString(data.start);
-                    const endTime = parseDateString(data.end);
-                    let isMaintenance = data.forced === true || (startTime && endTime && now >= startTime && now <= endTime);
-
-                    if (isMaintenance) {
-                        currentMaintenanceState = true;
-                        if (!isInitiallyLoaded) { await simulateLoading(100, "Prověřování systému"); isInitiallyLoaded = true; }
-                        enableMaintenanceView("MAINTENANCE MODE", endTime, data["show-endtime"] && endTime && endTime > now);
-                    } else {
-                        if (!isInitiallyLoaded) { await simulateLoading(100); isInitiallyLoaded = true; }
-                        if (currentMaintenanceState || mainContent.style.display !== 'block') {
-                            currentMaintenanceState = false;
-                            disableMaintenanceView();
-                        }
-                    }
-                } else {
-                    if (!isInitiallyLoaded) { await simulateLoading(100, "Offline start"); isInitiallyLoaded = true; }
-                    if (currentMaintenanceState || mainContent.style.display !== 'block') {
-                        currentMaintenanceState = false;
-                        disableMaintenanceView();
-                    }
-                }
-            }
-
-            async function init() {
-                await simulateLoading(35);
-                await checkSystemStatus(); 
-                setInterval(checkSystemStatus, 10000); 
-            }
-
-            window.onload = init;
-
-            // ZDE JE KLÍČOVÁ REGISTRACE SW S OKAMŽITOU AKTUALIZACÍ
-            if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.register('./sw.js').then(reg => {
-                    reg.update(); // Vynutí kontrolu nového sw.js na GitHubu při každém startu
-                    
-                    reg.addEventListener('updatefound', () => {
-                        const installingWorker = reg.installing;
-                        installingWorker.addEventListener('statechange', () => {
-                            if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                                // Jakmile se stáhne nový SW, stránka se hned sama reloadne do nové verze
-                                window.location.reload();
-                            }
+                        // Pokud se stáhne nová verze, vynutíme reload, aby se načetla
+                        registration.addEventListener('updatefound', () => {
+                            const newWorker = registration.installing;
+                            newWorker.addEventListener('statechange', () => {
+                                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                    console.log('Nová verze k dispozici, aktualizuji...');
+                                    window.location.reload();
+                                }
+                            });
                         });
-                    });
-                }).catch(err => console.error("PWA Error:", err));
-            }
-        })();
+                    })
+                    .catch((err) => console.error('SW registrace selhala:', err));
+            });
+        }
     </script>
+
 </body>
 </html>
