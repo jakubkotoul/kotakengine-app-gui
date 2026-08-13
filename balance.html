@@ -391,6 +391,7 @@
                 body: text,
                 timestamp: Date.now()
             });
+            triggerSystemNotification("KotakEngine", text);
         }
 
         function sendCustomNotification() {
@@ -406,7 +407,37 @@
                 body: customText,
                 timestamp: Date.now()
             });
+            triggerSystemNotification("KotakEngine", customText);
         }
+
+        function listenToNotifications() {
+            db.ref('money/notifications').limitToLast(1).on('child_added', (snapshot) => {
+                const notif = snapshot.val();
+                if (!notif) return;
+                if (Date.now() - notif.timestamp > 5000) return;
+                if (isNotifMuted) return;
+                triggerSystemNotification(notif.title, notif.body);
+            });
+        }
+
+        function triggerSystemNotification(title, body) {
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.ready.then(registration => {
+                    registration.showNotification(title, {
+                        body: body,
+                        icon: 'logo.png',
+                        badge: 'logo.png',
+                        vibrate: [200, 100, 200]
+                    });
+                }).catch(err => {
+                    new Notification(title, { body: body });
+                });
+            } else {
+                new Notification(title, { body: body });
+            }
+        }
+
+        listenToNotifications();
 
         function openBalanceForm(negative) {
             pendingNegative = negative;
