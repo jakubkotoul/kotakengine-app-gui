@@ -28,6 +28,29 @@
             -webkit-tap-highlight-color: transparent;
         }
 
+        /* --- SPLASH SCREEN --- */
+        #splash-screen {
+            position: fixed;
+            inset: 0;
+            background: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            transition: opacity 0.5s ease;
+        }
+        .logo-pulse {
+            width: 100px;
+            height: 100px;
+            background: #38bdf8;
+            border-radius: 20px;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { transform: scale(0.8); opacity: 0.5; }
+            50% { transform: scale(1); opacity: 1; }
+        }
+
         body, html {
             background-color: #090d16;
             color: #f1f5f9;
@@ -146,65 +169,6 @@
         }
         .history-item .history-amount.negative { color: #ef4444; }
         .history-item .history-amount.positive { color: #33b322; }
-
-        /* --- STŘEDOVÁ DYNAMICKÁ TLAČÍTKA A OFFLINE TEXT --- */
-        .center-buttons {
-            position: absolute;
-            top: 50%;
-            left: 0;
-            width: 100%;
-            transform: translateY(-50%);
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
-            max-height: 70vh;
-            overflow-y: auto;
-            padding: 0 20px;
-            align-items: center;
-        }
-        .center-buttons::-webkit-scrollbar { display: none; }
-
-        .center-buttons button {
-            position: relative;
-            height: 55px;
-            width: 100%;
-            background: #38bdf8;
-            color: #090d16;
-            border: none;
-            border-radius: 25px;
-            font-weight: bold;
-            font-size: 15px;
-            cursor: pointer;
-            box-shadow: 0 4px 15px rgba(56, 189, 248, 0.2);
-            transition: transform 0.1s ease;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
-        }
-
-        .center-buttons button:active {
-            transform: scale(0.97);
-        }
-
-        .offline-message {
-            color: #64748b;
-            font-size: 0.9rem;
-            font-weight: bold;
-            letter-spacing: 1px;
-            text-transform: uppercase;
-            text-align: center;
-            padding: 10px;
-        }
-
-        .btn-icon {
-            position: absolute;
-            left: 24px;
-            top: 50%;
-            transform: translateY(-50%);
-            font-size: 20px;
-            line-height: 1;
-        }
 
         /* --- WALLET BOTTOM SHEET --- */
         .wallet-sheet {
@@ -527,6 +491,11 @@
 </head>
 <body>
 
+    <!-- Úvodní načítací obrazovka (Splash Screen) -->
+    <div id="splash-screen">
+        <div class="logo-pulse"></div>
+    </div>
+
     <div class="top-sheet-overlay" id="topSheetOverlay" onclick="closeTopSheet()"></div>
 
     <div class="balance-status">
@@ -588,7 +557,6 @@
         <button class="modal-btn modal-close" style="margin-top: 12px;" onclick="closeHistoryActionSheet()">Zrušit</button>
     </div>
 
-
     <div class="history-list" id="historyList"></div>
 
     <div class="wallet-sheet animating" id="walletSheet">
@@ -639,13 +607,25 @@
     </div>
 
     <script>
-        // Registrace Service Workera pro PWA (převedeno z původního index.html)
+        // Skrytí splash screenu po načtení
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                const splash = document.getElementById('splash-screen');
+                if (splash) {
+                    splash.style.opacity = '0';
+                    setTimeout(() => splash.remove(), 500);
+                }
+            }, 800);
+        });
+
+        // Registrace Service Workera pro PWA
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('./sw.js')
                     .then((registration) => {
                         console.log('SW registrován pro:', registration.scope);
                         registration.update();
+
                         registration.addEventListener('updatefound', () => {
                             const newWorker = registration.installing;
                             newWorker.addEventListener('statechange', () => {
@@ -710,7 +690,6 @@
             }
         }
 
-        // Obnovení stavu tlačítek po refreshi
         if (localStorage.getItem('kotak_balance_actions_visible') === '1') {
             document.getElementById('balanceActions').classList.add('visible');
         }
@@ -777,7 +756,7 @@
         }
 
         // ==========================================
-        // AKCE NAD POLOŽKOU HISTORIE (podržet = upravit/smazat)
+        // AKCE NAD POLOŽKOU HISTORIE
         // ==========================================
         let editingHistoryKey = null;
         let historyPressTimer = null;
@@ -884,7 +863,6 @@
         }
 
         listenToHistory();
-
 
         let currentRoom = localStorage.getItem('kotak_active_room') || "room1"; 
         let currentCards = []; 
