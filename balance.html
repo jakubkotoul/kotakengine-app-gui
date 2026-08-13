@@ -259,7 +259,7 @@
         
         <div style="margin-bottom: 15px;">
             <button class="notif-option-btn" onclick="sendPresetNotification('Na účtu zbývá ' + currentBalanceValue + ' Kč')">Na účtu zbývá [zůstatek]</button>
-            <button class="notif-option-btn" onclick="sendPresetNotification('Pozor! Málo peněz na účtu (' + currentBalanceValue + ' Kč)')">Pozor! Málo peněz na účtu</button>
+            <button class="notif-option-btn" onclick="sendPresetNotification('Pozor! Málo peněz na účtu (' + currentBalanceValue + ' Kč)')">Pozor! Máло peněz na účtu</button>
             <button class="notif-option-btn" onclick="sendPresetNotification('Na účtu je nedostatek peněz (' + currentBalanceValue + ' Kč)')">Na účtu je nedostatek peněz</button>
         </div>
 
@@ -383,14 +383,10 @@
             document.getElementById('notifModal').classList.remove('active');
         }
 
+        // Čisté spuštění notifikace přímo přes Service Worker bez chyb a duplikování
         function sendPresetNotification(text) {
             closeNotificationModal();
             if (isNotifMuted) return;
-            db.ref('money/notifications').push({
-                title: "KotakEngine",
-                body: text,
-                timestamp: Date.now()
-            });
             triggerSystemNotification("KotakEngine", text);
         }
 
@@ -402,25 +398,32 @@
             }
             closeNotificationModal();
             if (isNotifMuted) return;
-            db.ref('money/notifications').push({
-                title: "KotakEngine",
-                body: customText,
-                timestamp: Date.now()
-            });
             triggerSystemNotification("KotakEngine", customText);
         }
 
-        function listenToNotifications() {
-            db.ref('money/notifications').limitToLast(1).on('child_added', (snapshot) => {
-                const notif = snapshot.val();
-                if (!notif) return;
-                if (Date.now() - notif.timestamp > 5000) return;
-                if (isNotifMuted) return;
-                triggerSystemNotification(notif.title, notif.body);
-            });
+        function triggerSystemNotification(title, body) {
+            if (!("Notification" in window)) {
+                alert("Prohlížeč nepodporuje notifikace.");
+                return;
+            }
+
+            // Pokud ještě nemáme oprávnění, vyžádáme si ho
+            if (Notification.permission === "granted") {
+                showSwNotification(title, body);
+            } else if (Notification.permission !== "denied") {
+                Notification.requestPermission().then(permission => {
+                    if (permission === "granted") {
+                        showSwNotification(title, body);
+                    } else {
+                        alert("Oprávnění k notifikacím bylo zamítnuto.");
+                    }
+                });
+            } else {
+                alert("Notifikace jsou zakázané v nastavení prohlížeče.");
+            }
         }
 
-        function triggerSystemNotification(title, body) {
+        function showSwNotification(title, body) {
             if ('serviceWorker' in navigator) {
                 navigator.serviceWorker.ready.then(registration => {
                     registration.showNotification(title, {
@@ -429,15 +432,13 @@
                         badge: 'logo.png',
                         vibrate: [200, 100, 200]
                     });
-                }).catch(err => {
+                }).catch(() => {
                     new Notification(title, { body: body });
                 });
             } else {
                 new Notification(title, { body: body });
             }
         }
-
-        listenToNotifications();
 
         function openBalanceForm(negative) {
             pendingNegative = negative;
