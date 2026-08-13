@@ -31,7 +31,6 @@
             align-items: center;
         }
 
-        /* --- TLAČÍTKO PRO UTISKNUTÍ NOTIFIKACÍ V LEVÉM HORNÍM ROHU --- */
         .notif-mute-btn {
             position: absolute;
             top: 14px;
@@ -50,7 +49,6 @@
             z-index: 10;
             transition: all 0.2s ease;
         }
-        /* Když svítí (aktivní = notifikace jsou blokované) */
         .notif-mute-btn.muted {
             background: rgba(239, 68, 68, 0.15);
             border-color: rgba(239, 68, 68, 0.4);
@@ -58,7 +56,6 @@
             box-shadow: 0 0 12px rgba(239, 68, 68, 0.3);
         }
 
-        /* --- HLAVNÍ ČÁSTKA A GRAF --- */
         .balance-display {
             width: 100%;
             display: flex;
@@ -79,7 +76,6 @@
             transform-origin: center;
         }
 
-        /* Barvy zůstatku */
         .balance-value.color-green {
             color: #22c55e;
             text-shadow: 0 4px 20px rgba(34, 197, 94, 0.3);
@@ -93,7 +89,6 @@
             text-shadow: 0 4px 20px rgba(239, 68, 68, 0.3);
         }
 
-        /* Agresivní pulzování a blikání */
         .balance-value.pulsing {
             animation: pulse-flash 0.4s infinite alternate ease-in-out;
         }
@@ -103,7 +98,6 @@
             100% { transform: scale(1.25); opacity: 1; text-shadow: 0 4px 30px rgba(239, 68, 68, 0.9); }
         }
 
-        /* SVG Lomený graf pod částkou */
         .trend-chart-container {
             width: 180px;
             height: 35px;
@@ -118,7 +112,6 @@
             overflow: visible;
         }
 
-        /* --- EDIT MODE TLAČÍTKA V JEDNÉ ŘADĚ --- */
         .edit-panel {
             display: none;
             width: 100%;
@@ -149,7 +142,6 @@
         .edit-btn:active { background: #334155; }
         .edit-btn.active-pulse { background: #eab308; color: #090d16; border-color: #eab308; }
 
-        /* --- FORMULÁŘE A MODALY --- */
         .balance-form-overlay {
             display: none;
             position: fixed;
@@ -180,7 +172,6 @@
         .form-group label { display: block; font-size: 0.8rem; color: #94a3b8; margin-bottom: 6px; }
         .form-group input[type="text"] { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #fff; font-size: 1rem; }
 
-        /* Styly pro rychlé volby v notifikacích */
         .notif-option-btn {
             width: 100%;
             padding: 10px 12px;
@@ -201,7 +192,6 @@
         .modal-btn.primary { background: #38bdf8; color: #090d16; }
         .modal-close { background: transparent; color: #94a3b8; margin-top: 5px; }
 
-        /* --- HISTORIE PLATEB --- */
         .history-list {
             width: 100%;
             flex: 1;
@@ -231,19 +221,15 @@
 </head>
 <body>
 
-    <!-- Tlačítko pro vypnutí příjmu notifikací v levém horním rohu -->
     <button class="notif-mute-btn" id="notifMuteBtn" onclick="toggleNotificationMute()" title="Ztlumit notifikace">🔕</button>
 
-    <!-- ZŮSTATEK -->
     <div class="balance-display" id="balanceDisplay">
         <div class="balance-value color-green" id="balanceValue" onclick="handleBalanceTap()">0 Kč</div>
         
-        <!-- Lomený graf pro posledních 10 zápisů -->
         <div class="trend-chart-container">
             <svg id="trendSvg" viewBox="0 0 180 35"></svg>
         </div>
 
-        <!-- EDIT MODE TLAČÍTKA V JEDNÉ ŘADĚ -->
         <div class="edit-panel" id="editPanel">
             <button class="edit-btn" id="btnPulseToggle" onclick="togglePulseNotification()">Upozornit</button>
             <button class="edit-btn" onclick="openBalanceForm(true)">Odebrat</button>
@@ -252,7 +238,6 @@
         </div>
     </div>
 
-    <!-- FORMULÁŘ PŘIDAT / ODEBRAT -->
     <div class="balance-form-overlay" id="balanceFormOverlay" onclick="closeBalanceForm()"></div>
     <div class="balance-form" id="balanceForm">
         <h2 id="balanceFormTitle">Přidat částku</h2>
@@ -268,19 +253,16 @@
         <button class="modal-btn modal-close" onclick="closeBalanceForm()">Zrušit</button>
     </div>
 
-    <!-- MODAL OKNO PRO OZNÁMENÍ -->
     <div class="balance-form-overlay" id="notifModalOverlay" onclick="closeNotificationModal()"></div>
     <div class="balance-form" id="notifModal">
         <h2>Odeslat oznámení</h2>
         
-        <!-- 3 rychlé volby -->
         <div style="margin-bottom: 15px;">
             <button class="notif-option-btn" onclick="sendPresetNotification('Na účtu zbývá ' + currentBalanceValue + ' Kč')">Na účtu zbývá [zůstatek]</button>
             <button class="notif-option-btn" onclick="sendPresetNotification('Pozor! Málo peněz na účtu (' + currentBalanceValue + ' Kč)')">Pozor! Málo peněz na účtu</button>
             <button class="notif-option-btn" onclick="sendPresetNotification('Na účtu je nedostatek peněz (' + currentBalanceValue + ' Kč)')">Na účtu je nedostatek peněz</button>
         </div>
 
-        <!-- Textbox pro vlastní zprávu -->
         <div class="form-group">
             <label>Vlastní zpráva</label>
             <input type="text" id="inpCustomNotif" placeholder="Napiš vlastní text...">
@@ -290,7 +272,6 @@
         <button class="modal-btn modal-close" onclick="closeNotificationModal()">Zrušit</button>
     </div>
 
-    <!-- AKCE NAD HISTORIÍ (UPRAVIT / SMAZAT) -->
     <div class="balance-form-overlay" id="historyActionOverlay" onclick="closeHistoryActionSheet()"></div>
     <div class="balance-form" id="historyActionSheet">
         <h2>Platba</h2>
@@ -299,7 +280,6 @@
         <button class="modal-btn modal-close" style="margin-top: 12px;" onclick="closeHistoryActionSheet()">Zrušit</button>
     </div>
 
-    <!-- HISTORIE -->
     <div class="history-list" id="historyList"></div>
 
     <script>
@@ -323,7 +303,6 @@
 
         let currentBalanceValue = "0";
 
-        // --- STAV TLUMENÍ NOTIFIKACÍ ---
         let isNotifMuted = localStorage.getItem('kotak_notif_muted') === '1';
         const muteBtn = document.getElementById('notifMuteBtn');
         if (isNotifMuted) {
@@ -341,7 +320,6 @@
             }
         }
 
-        // --- 10x KLIKNUTÍ PRO OTEVŘENÍ EDIT MODE PANELU ---
         let balanceTapCount = 0;
         let balanceTapTimer = null;
         let pendingNegative = false;
@@ -372,7 +350,6 @@
             document.getElementById('editPanel').classList.add('visible');
         }
 
-        // --- TLAČÍTKO UPOZORNIT (PULZOVÁNÍ) ---
         let isPulsingActive = localStorage.getItem('kotak_pulse_active') === '1';
         if (isPulsingActive) {
             document.getElementById('balanceValue').classList.add('pulsing');
@@ -395,7 +372,6 @@
             }
         }
 
-        // --- OTEVŘENÍ / ZAVŘENÍ OKNA PRO OZNÁMENÍ ---
         function openNotificationModal() {
             document.getElementById('inpCustomNotif').value = '';
             document.getElementById('notifModalOverlay').classList.add('active');
@@ -407,10 +383,14 @@
             document.getElementById('notifModal').classList.remove('active');
         }
 
-        // --- ODESÍLÁNÍ REÁLNÝCH SYSTÉMOVÝCH NOTIFIKACÍ ---
         function sendPresetNotification(text) {
             closeNotificationModal();
-            triggerSystemNotification("KotakEngine", text);
+            if (isNotifMuted) return;
+            db.ref('money/notifications').push({
+                title: "KotakEngine",
+                body: text,
+                timestamp: Date.now()
+            });
         }
 
         function sendCustomNotification() {
@@ -420,52 +400,14 @@
                 return;
             }
             closeNotificationModal();
-            triggerSystemNotification("KotakEngine", customText);
-        }
-
-        function triggerSystemNotification(title, body) {
-            // Pokud je zapnuté tlačítko pro ztlumení v rohu, notifikaci ignorujeme
             if (isNotifMuted) return;
-
-            if (!("Notification" in window)) {
-                alert("Tento prohlížeč nepodporuje notifikace.");
-                return;
-            }
-
-            if (Notification.permission === "granted") {
-                showNotificationActive(title, body);
-            } else if (Notification.permission !== "denied") {
-                Notification.requestPermission().then(permission => {
-                    if (permission === "granted") {
-                        showNotificationActive(title, body);
-                    } else {
-                        alert("Oprávnění k notifikacím bylo zamítnuto.");
-                    }
-                });
-            } else {
-                alert("Notifikace jsou zakázané. Povol je v nastavení prohlížeče.");
-            }
+            db.ref('money/notifications').push({
+                title: "KotakEngine",
+                body: customText,
+                timestamp: Date.now()
+            });
         }
 
-        function showNotificationActive(title, body) {
-            if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.ready.then(registration => {
-                    registration.showNotification(title, {
-                        body: body,
-                        icon: 'logo.png',
-                        badge: 'logo.png',
-                        vibrate: [200, 100, 200]
-                    });
-                }).catch(err => {
-                    console.error("Chyba při spouštění notifikace přes SW:", err);
-                    new Notification(title, { body: body });
-                });
-            } else {
-                new Notification(title, { body: body });
-            }
-        }
-
-        // --- FORMULÁŘ ---
         function openBalanceForm(negative) {
             pendingNegative = negative;
             editingHistoryKey = null;
@@ -508,7 +450,6 @@
             closeBalanceForm();
         }
 
-        // --- VYKRESLENÍ LOMENÉHO GRAFU ---
         function renderTrendChart(history) {
             const svg = document.getElementById('trendSvg');
             svg.innerHTML = '';
@@ -562,7 +503,6 @@
             });
         }
 
-        // --- AKTUALIZACE ZŮSTATKU A BAREV ---
         function updateBalanceDisplay(history) {
             const valueEl = document.getElementById('balanceValue');
 
@@ -589,7 +529,6 @@
             renderTrendChart(history);
         }
 
-        // --- HISTORIE A EDITACE POLOŽEK ---
         let editingHistoryKey = null;
         let historyPressTimer = null;
         let historyPressTriggered = false;
@@ -647,7 +586,6 @@
         function renderHistory(history) {
             const container = document.getElementById('historyList');
             container.innerHTML = '';
-
             updateBalanceDisplay(history);
 
             if (!history || history.length === 0) return;

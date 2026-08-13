@@ -10,13 +10,14 @@
     <meta name="theme-color" content="#090d16">
     <link rel="apple-touch-icon" href="logo.png">
 
-    <!-- Knihovny pro generování reálných kódů -->
+    <!-- Knihovny pro generování kódů -->
     <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
-    <!-- Firebase SDK -->
+    <!-- Firebase SDK (App, Database a Messaging) -->
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js"></script>
 
     <style>
         * {
@@ -37,20 +38,23 @@
             position: relative;
         }
 
-        /* --- IFRAME PRO ZŮSTATEK A HISTORII --- */
-        #balanceFrame {
+        #frameContainer {
             position: absolute;
             top: 5px;
             left: 5px;
             width: calc(100vw - 10px);
             height: calc(100vh - 70px);
+            z-index: 1;
+        }
+
+        #balanceFrame {
+            width: 100%;
+            height: 100%;
             border: none;
             background: transparent;
-            z-index: 1;
             border-radius: 16px;
         }
 
-        /* --- WALLET BOTTOM SHEET --- */
         .wallet-sheet {
             position: absolute;
             bottom: 0;
@@ -118,7 +122,6 @@
         }
         .wallet-content::-webkit-scrollbar { display: none; }
 
-        /* --- KARTY V SEZNAMU --- */
         .loyalty-card {
             position: relative;
             min-height: 90px;
@@ -344,7 +347,6 @@
 </head>
 <body>
 
-    <!-- DYNAMICKÝ IFRAME PRO ZŮSTATEK -->
     <div id="frameContainer"></div>
 
     <div class="top-sheet-overlay" id="topSheetOverlay" onclick="closeTopSheet()"></div>
@@ -386,14 +388,11 @@
 
     <div class="modal" id="syncModal">
         <h2>Vyberte Roomku</h2>
-        
         <div id="roomButtonsContainer"></div>
-        
         <div class="flex-row">
             <input type="text" id="inpNewRoom" placeholder="Nová roomka">
             <button class="modal-btn primary" onclick="createNewRoom()">+</button>
         </div>
-
         <button class="modal-btn modal-close" onclick="closeModals()">Zrušit</button>
     </div>
 
@@ -420,7 +419,6 @@
     </div>
 
     <script>
-        // Dynamické vygenerování iframe s časovým razítkem proti zafixování v PWA cache
         window.addEventListener('DOMContentLoaded', () => {
             const container = document.getElementById('frameContainer');
             if (container) {
@@ -431,28 +429,6 @@
                 container.appendChild(iframe);
             }
         });
-
-        // Registrace Service Workera pro PWA (stará se o offline režim karet)
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./sw.js')
-                    .then((registration) => {
-                        console.log('SW registrován pro:', registration.scope);
-                        registration.update();
-
-                        registration.addEventListener('updatefound', () => {
-                            const newWorker = registration.installing;
-                            newWorker.addEventListener('statechange', () => {
-                                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                                    console.log('Nová verze k dispozici, aktualizuji...');
-                                    window.location.reload();
-                                }
-                            });
-                        });
-                    })
-                    .catch((err) => console.error('SW registrace selhala:', err));
-            });
-        }
 
         const firebaseConfig = {
             apiKey: "AIzaSyA6eh8N7PAe3nE7jCaJyO_g6JgihBLA-sw",
@@ -467,6 +443,41 @@
 
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
+        const messaging = firebase.messaging();
+
+        // Registrace VAPID klíče pro notifikace na pozadí
+        const VAPID_KEY = "BBRlfC-r8D5ulr7V0kDIRJXhZlYX4J-hTOffGmdVMUdnoLSZOKbPfHWxI89pMYI_3QYOdrWmdBZJVAEeLjIFnKY";
+
+        function requestPushPermission() {
+            Notification.requestPermission().then((permission) => {
+                if (permission === 'granted') {
+                    messaging.getToken({ vapidKey: VAPID_KEY }).then((currentToken) => {
+                        if (currentToken) {
+                            db.ref('fcm_tokens/' + currentToken.substring(0, 15)).set({ token: currentToken });
+                        }
+                    }).catch((err) => {});
+                }
+            });
+        }
+        requestPushPermission();
+
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js')
+                    .then((registration) => {
+                        registration.update();
+                        registration.addEventListener('updatefound', () => {
+                            const newWorker = registration.installing;
+                            newWorker.addEventListener('statechange', () => {
+                                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                    window.location.reload();
+                                }
+                            });
+                        });
+                    })
+                    .catch((err) => {});
+            });
+        }
 
         let currentRoom = localStorage.getItem('kotak_active_room') || "room1"; 
         let currentCards = []; 
@@ -475,13 +486,8 @@
         let reorderIndex = null; 
         const cardList = document.getElementById('cardList');
 
-        // ==========================================
-        // OFFLINE-FIRST NAČÍTÁNÍ KARET S HLÁŠKOU
-        // ==========================================
         function listenToRoomUpdates() {
             db.ref('rooms/' + currentRoom).off();
-
-            // 1. Okamžité načtení poslední online cache
             const cachedData = localStorage.getItem('kotak_cards_' + currentRoom);
             if (cachedData) {
                 try {
@@ -490,7 +496,6 @@
                 } catch (e) {}
             }
 
-            // 2. Sledování stavu připojení pro zobrazení offline hlášky v boxu
             const connectedRef = db.ref(".info/connected");
             connectedRef.on("value", (snap) => {
                 const isConnected = snap.val();
@@ -507,13 +512,10 @@
                         walletContent.prepend(msg);
                     }
                 } else {
-                    if (existingMsg) {
-                        existingMsg.remove();
-                    }
+                    if (existingMsg) existingMsg.remove();
                 }
             });
 
-            // 3. Synchronizace z Firebase a aktualizace cache
             db.ref('rooms/' + currentRoom).on('value', (snapshot) => {
                 const data = snapshot.val();
                 if (data) {
@@ -534,12 +536,8 @@
 
         function renderCards() {
             cardList.innerHTML = '';
-            
-            // Pokud tu visí offline hláška, zachováme ji nahoře v seznamu
             const connectedRefSnap = document.getElementById('offlineCardsMessage');
-            if (connectedRefSnap) {
-                cardList.appendChild(connectedRefSnap);
-            }
+            if (connectedRefSnap) cardList.appendChild(connectedRefSnap);
 
             currentCards.forEach((c, index) => {
                 if (!c) return; 
@@ -605,7 +603,6 @@
         function moveCard(index, direction) {
             const newIndex = index + direction;
             if (newIndex < 0 || newIndex >= currentCards.length) return; 
-
             const temp = currentCards[index];
             currentCards[index] = currentCards[newIndex];
             currentCards[newIndex] = temp;
@@ -650,11 +647,8 @@
                     wrap.appendChild(delBtn);
                     wrap.appendChild(btn);
                     container.appendChild(wrap);
-
                     initSwipeToDelete(wrap, btn, room);
                 });
-            }).catch(err => {
-                container.innerHTML = '<p style="color: #ef4444; text-align: center;">Chyba načítání.</p>';
             });
         }
 
@@ -662,25 +656,15 @@
             let startX = 0;
             let isSwiping = false;
             let isDragging = false; 
-
             const getPos = (e) => e.touches ? e.touches[0].clientX : e.clientX;
 
-            function start(e) {
-                startX = getPos(e);
-                isSwiping = true;
-                isDragging = false;
-                btn.style.transition = 'none';
-            }
-            
+            function start(e) { startX = getPos(e); isSwiping = true; isDragging = false; btn.style.transition = 'none'; }
             function move(e) {
                 if (!isSwiping) return;
                 let diff = getPos(e) - startX;
                 if (Math.abs(diff) > 5) isDragging = true; 
-                if (diff < 10 && diff > -70) { 
-                    btn.style.transform = `translateX(${diff < 0 ? diff : 0}px)`;
-                }
+                if (diff < 10 && diff > -70) { btn.style.transform = `translateX(${diff < 0 ? diff : 0}px)`; }
             }
-            
             function end(e) {
                 if (!isSwiping) return;
                 isSwiping = false;
@@ -727,7 +711,6 @@
             const input = document.getElementById('inpNewRoom');
             let newRoomName = input.value.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
             if (!newRoomName) return alert('Zadej platný název!');
-            
             const initialCards = [{ card: "Základní karta", disc: "Tuhle kartu můžeš upravit nebo smazat", kode: "12345678", id: "barcode" }];
             db.ref('rooms/' + newRoomName).set(initialCards).then(() => {
                 localStorage.setItem('kotak_cards_' + newRoomName, JSON.stringify(initialCards));
