@@ -362,7 +362,7 @@
         // --- ODESÍLÁNÍ REÁLNÝCH SYSTÉMOVÝCH NOTIFIKACÍ ---
         function sendPresetNotification(text) {
             closeNotificationModal();
-            triggerSystemNotification("KotakEngine Upozornění", text);
+            triggerSystemNotification("KotakEngine", text);
         }
 
         function sendCustomNotification() {
@@ -372,7 +372,7 @@
                 return;
             }
             closeNotificationModal();
-            triggerSystemNotification("KotakEngine Upozornění", customText);
+            triggerSystemNotification("KotakEngine", customText);
         }
 
         function triggerSystemNotification(title, body) {
