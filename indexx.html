@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KotakEngine</title>
+    <!-- Odkaz na manifest pro PWA -->
+    <link rel="manifest" href="manifest.json">
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #000;
+        }
+        iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Tvůj iframe, který načítá app.html -->
+    <iframe src="app.html" id="appFrame" title="KotakEngine App"></iframe>
+
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                // Registrace Service Workeru
+                navigator.serviceWorker.register('./sw.js')
+                    .then((registration) => {
+                        console.log('SW registrován pro:', registration.scope);
+
+                        // Automatická kontrola aktualizací při každém otevření
+                        registration.update();
+
+                        // Pokud se stáhne nová verze, vynutíme reload, aby se načetla
+                        registration.addEventListener('updatefound', () => {
+                            const newWorker = registration.installing;
+                            newWorker.addEventListener('statechange', () => {
+                                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                    console.log('Nová verze k dispozici, aktualizuji...');
+                                    window.location.reload();
+                                }
+                            });
+                        });
+                    })
+                    .catch((err) => console.error('SW registrace selhala:', err));
+            });
+        }
+    </script>
+
+</body>
+</html>

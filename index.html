@@ -2,43 +2,650 @@
 <html lang="cs">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>KotakEngine</title>
-    <!-- Odkaz na manifest pro PWA -->
+    
+    <!-- PWA Manifest & Theme -->
     <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#090d16">
+    <link rel="apple-touch-icon" href="logo.png">
+
+    <!-- Knihovny pro generování reálných kódů -->
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
     <style>
-        body, html {
+        * {
+            box-sizing: border-box;
             margin: 0;
             padding: 0;
-            width: 100%;
-            height: 100%;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body, html {
+            background-color: #090d16;
+            color: #f1f5f9;
+            height: 100vh;
+            width: 100vw;
             overflow: hidden;
-            background-color: #000;
+            position: relative;
         }
-        iframe {
+
+        /* --- STŘEDOVÝ ZŮSTATEK --- */
+        .balance-display {
+            position: absolute;
+            top: 15%;
+            left: 0;
             width: 100%;
-            height: 100%;
-            border: none;
+            transform: translateY(-20px);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 0 20px;
         }
+        .balance-display .balance-label {
+            font-size: 13px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: #64748b;
+        }
+        .balance-display .balance-value {
+            font-size: 58px;
+            font-weight: bold;
+            color: #38bdf8;
+            text-shadow: 0 4px 20px rgba(56, 189, 248, 0.3);
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .balance-actions {
+            display: none;
+            gap: 12px;
+            margin-top: 4px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .balance-actions.visible { display: flex; }
+        .balance-action-btn {
+            padding: 10px 22px;
+            border-radius: 20px;
+            border: none;
+            font-weight: bold;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        .balance-action-btn.add { background: #22c55e; color: #052e13; }
+        .balance-action-btn.remove { background: #ef4444; color: #2c0808; }
+
+        .balance-form-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.6);
+            z-index: 90;
+        }
+        .balance-form-overlay.active { display: block; }
+
+        .balance-form {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 85%;
+            max-width: 360px;
+            background: #0f172a;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            border-radius: 18px;
+            padding: 24px;
+            z-index: 91;
+        }
+        .balance-form.active { display: block; }
+        .balance-form h2 { margin-bottom: 16px; font-size: 18px; }
+
+        /* --- HISTORIE PLATEB --- */
+        .history-list {
+            position: absolute;
+            top: calc(15% + 160px);
+            left: 0;
+            width: 100%;
+            bottom: 140px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            padding: 0 20px;
+            overflow-y: auto;
+        }
+        .history-list::-webkit-scrollbar { display: none; }
+
+        .history-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(148, 163, 184, 0.08);
+            border: 1px solid rgba(148, 163, 184, 0.15);
+            border-radius: 14px;
+            padding: 12px 16px;
+            flex-shrink: 0;
+        }
+        .history-item .history-info {
+            font-size: 14px;
+            color: #cbd5e1;
+        }
+        .history-item .history-amount {
+            font-size: 16px;
+            font-weight: bold;
+        }
+        .history-item .history-amount.negative { color: #ef4444; }
+        .history-item .history-amount.positive { color: #33b322; }
+
+        /* --- STŘEDOVÁ DYNAMICKÁ TLAČÍTKA A OFFLINE TEXT --- */
+        .center-buttons {
+            position: absolute;
+            top: 50%;
+            left: 0;
+            width: 100%;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            max-height: 70vh;
+            overflow-y: auto;
+            padding: 0 20px;
+            align-items: center;
+        }
+        .center-buttons::-webkit-scrollbar { display: none; }
+
+        .center-buttons button {
+            position: relative;
+            height: 55px;
+            width: 100%;
+            background: #38bdf8;
+            color: #090d16;
+            border: none;
+            border-radius: 25px;
+            font-weight: bold;
+            font-size: 15px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(56, 189, 248, 0.2);
+            transition: transform 0.1s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .center-buttons button:active {
+            transform: scale(0.97);
+        }
+
+        .offline-message {
+            color: #64748b;
+            font-size: 0.9rem;
+            font-weight: bold;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            text-align: center;
+            padding: 10px;
+        }
+
+        .btn-icon {
+            position: absolute;
+            left: 24px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 20px;
+            line-height: 1;
+        }
+
+        /* --- WALLET BOTTOM SHEET --- */
+        .wallet-sheet {
+            position: absolute;
+            bottom: 0;
+            left: 10px;
+            width: calc(100% - 20px);
+            height: calc(100vh - 40px);
+            background: #131c2e;
+            border-radius: 24px 24px 0 0;
+            box-shadow: 0 -5px 25px rgba(0,0,0,0.6);
+            display: flex;
+            flex-direction: column;
+            transform: translateY(calc(100% - 60px));
+            will-change: transform;
+            z-index: 100;
+        }
+
+        .wallet-sheet.animating {
+            transition: transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+
+        .drag-handle-area {
+            position: relative;
+            height: 60px;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: grab;
+            flex-shrink: 0;
+        }
+
+        .drag-handle {
+            width: 40px;
+            height: 5px;
+            background: #334155;
+            border-radius: 3px;
+        }
+
+        .sheet-action-btn {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            background: transparent;
+            border: none;
+            color: #38bdf8;
+            font-weight: bold;
+            font-size: 14px;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease;
+            cursor: pointer;
+        }
+
+        .sheet-action-btn.left { left: 20px; }
+        .sheet-action-btn.right { right: 20px; font-size: 26px; line-height: 14px; }
+        .wallet-sheet.expanded .sheet-action-btn { opacity: 1; pointer-events: auto; }
+
+        .wallet-content {
+            padding: 0 20px 20px 20px;
+            flex: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .wallet-content::-webkit-scrollbar { display: none; }
+
+        /* --- KARTY V SEZNAMU --- */
+        .loyalty-card {
+            position: relative;
+            min-height: 90px;
+            border-radius: 12px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            flex-shrink: 0;
+            cursor: pointer;
+            transition: transform 0.1s, border 0.2s;
+        }
+        .loyalty-card:active { transform: scale(0.98); }
+        .loyalty-card.reorder-mode {
+            border: 2px dashed #38bdf8;
+            animation: pulse-border 1.5s infinite;
+        }
+
+        @keyframes pulse-border {
+            0% { border-color: rgba(56, 189, 248, 0.4); }
+            50% { border-color: rgba(56, 189, 248, 1); }
+            100% { border-color: rgba(56, 189, 248, 0.4); }
+        }
+
+        .card-header { font-weight: bold; font-size: 1.2rem; }
+        .card-note { font-size: 0.75rem; opacity: 0.7; margin-top: 4px; }
+
+        .card-reorder-controls {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            z-index: 10;
+        }
+        .reorder-btn {
+            background: rgba(15, 23, 42, 0.85);
+            color: #38bdf8;
+            border: 1px solid #38bdf8;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            font-size: 14px;
+            font-weight: bold;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+        }
+        .reorder-btn:active { background: #38bdf8; color: #090d16; }
+
+        .overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.75);
+            z-index: 200;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+        .overlay.active { opacity: 1; pointer-events: auto; }
+
+        .modal {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -40%);
+            width: calc(100% - 40px);
+            max-width: 360px;
+            background: #1e293b;
+            border-radius: 16px;
+            padding: 24px;
+            z-index: 210;
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+        }
+        .modal.active {
+            transform: translate(-50%, -50%);
+            opacity: 1;
+            pointer-events: auto;
+        }
+        
+        .modal h2 { margin-bottom: 15px; font-size: 1.2rem; color: #fff; text-align: center; }
+        .modal-btn { width: 100%; padding: 12px; margin-bottom: 10px; border-radius: 8px; border: none; font-weight: bold; background: #334155; color: #fff; cursor: pointer; }
+        .modal-btn.primary { background: #38bdf8; color: #090d16; }
+        .modal-btn.active-room { background: #0284c7; border: 2px solid #38bdf8; }
+        .modal-btn:active { opacity: 0.8; }
+        .modal-close { background: transparent; color: #94a3b8; margin-top: 5px; }
+
+        .form-group { margin-bottom: 15px; text-align: left; }
+        .form-group label { display: block; font-size: 0.8rem; color: #94a3b8; margin-bottom: 6px; }
+        .form-group input[type="text"] { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #fff; font-size: 1rem; }
+        
+        .flex-row { display: flex; gap: 10px; margin-bottom: 15px; margin-top: 15px; }
+        .flex-row input { flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #fff; font-size: 1rem; }
+        .flex-row button { width: auto; margin: 0; padding: 0 20px; }
+
+        .checkbox-group { display: flex; align-items: center; gap: 10px; font-size: 0.9rem; color: #cbd5e1; margin-top: 20px;}
+        .checkbox-group input { width: 18px; height: 18px; accent-color: #38bdf8; }
+
+        #roomButtonsContainer {
+            max-height: 180px;
+            overflow-x: hidden;
+            overflow-y: auto;
+            margin-bottom: 10px;
+            padding-right: 5px;
+        }
+        #roomButtonsContainer::-webkit-scrollbar { width: 4px; }
+        #roomButtonsContainer::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+
+        .room-swipe-wrap {
+            position: relative;
+            margin-bottom: 10px;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #ef4444;
+        }
+        .room-main-btn {
+            position: relative;
+            z-index: 2;
+            width: 100%;
+            margin-bottom: 0 !important;
+            transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+        .room-del-btn {
+            position: absolute;
+            right: 0;
+            top: 0;
+            bottom: 0;
+            width: 65px;
+            background: #ef4444;
+            color: white;
+            border: none;
+            z-index: 1;
+            cursor: pointer;
+            font-size: 1.4rem;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .top-sheet-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.85);
+            z-index: 150;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+        }
+        .top-sheet-overlay.active { opacity: 1; pointer-events: auto; }
+
+        .balance-status {
+            position: absolute;
+            top: 14px;
+            left: 0;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            z-index: 5;
+        }
+        .balance-status-pill {
+            font-size: 16px;
+            font-weight: bold;
+            padding: 11px 24px;
+            border-radius: 24px;
+            letter-spacing: 0.3px;
+        }
+        .balance-status-pill.ok {
+            background: rgba(34, 197, 94, 0.15);
+            color: #22c55e;
+            border: 1px solid rgba(34, 197, 94, 0.35);
+        }
+        .balance-status-pill.low {
+            background: rgba(239, 68, 68, 0.15);
+            color: #ef4444;
+            border: 1px solid rgba(239, 68, 68, 0.35);
+        }
+
+        .top-sheet {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            background: #f8fafc;
+            color: #0f172a;
+            border-radius: 0 0 24px 24px;
+            z-index: 160;
+            transform: translateY(-100%);
+            transition: transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+        .top-sheet.active { transform: translateY(0); }
+
+        .ts-content { padding: 40px 20px 20px 20px; text-align: center; }
+        
+        .ts-hidden-info {
+            max-height: 0;
+            opacity: 0;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+        
+        .top-sheet.expanded .ts-hidden-info {
+            max-height: 50px;
+            opacity: 1;
+            margin-bottom: 10px;
+            margin-top: 10px;
+        }
+
+        .ts-name { font-size: 1.4rem; font-weight: bold; }
+        .ts-code-text { font-family: monospace; font-size: 1.2rem; letter-spacing: 2px; }
+
+        .ts-code-display { margin: 0 auto; display: flex; justify-content: center; align-items: center;}
+        .ts-code-display canvas, .ts-code-display img { max-width: 100%; }
+
+        .ts-buttons {
+            display: flex;
+            gap: 10px;
+            padding: 0 20px;
+            max-height: 0;
+            opacity: 0;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+        .top-sheet.expanded .ts-buttons {
+            max-height: 100px;
+            opacity: 1;
+            padding: 10px 20px 20px 20px;
+        }
+        .ts-buttons button { flex: 1; padding: 12px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; }
+        
+        .ts-drag-area {
+            height: 40px;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: grab;
+        }
+        .ts-drag-handle { width: 40px; height: 5px; background: #cbd5e1; border-radius: 3px; }
     </style>
 </head>
 <body>
 
-    <!-- Tvůj iframe, který načítá app.html -->
-    <iframe src="app.html" id="appFrame" title="KotakEngine App"></iframe>
+    <div class="top-sheet-overlay" id="topSheetOverlay" onclick="closeTopSheet()"></div>
+
+    <div class="balance-status">
+        <div class="balance-status-pill" id="balanceStatusPill">Zůstatek je zatím v pohodě</div>
+    </div>
+
+    <div class="top-sheet" id="topSheet">
+        <div class="ts-content">
+            <div class="ts-hidden-info">
+                <div class="ts-name" id="tsCardName">Název karty</div>
+            </div>
+            
+            <div class="ts-code-display" id="tsCodeVisual"></div>
+            
+            <div class="ts-hidden-info">
+                <div class="ts-code-text" id="tsCodeText">123456789</div>
+            </div>
+        </div>
+        
+        <div class="ts-buttons" id="tsButtons">
+            <button style="background: #e2e8f0; color: #0f172a;" onclick="editActiveCard()">Upravit</button>
+            <button style="background: #ef4444; color: #fff;" onclick="deleteActiveCard()">Smazat</button>
+        </div>
+
+        <div class="ts-drag-area" id="tsDragArea">
+            <div class="ts-drag-handle"></div>
+        </div>
+    </div>
+
+    <div class="balance-display" id="balanceDisplay">
+        <div class="balance-label">Zůstatek</div>
+        <div class="balance-value" id="balanceValue" onclick="handleBalanceTap()">0 Kč</div>
+        <div class="balance-actions" id="balanceActions">
+            <button class="balance-action-btn add" onclick="openBalanceForm(false)">Přidat</button>
+            <button class="balance-action-btn remove" onclick="openBalanceForm(true)">Odebrat</button>
+        </div>
+    </div>
+
+    <div class="balance-form-overlay" id="balanceFormOverlay" onclick="closeBalanceForm()"></div>
+    <div class="balance-form" id="balanceForm">
+        <h2 id="balanceFormTitle">Přidat částku</h2>
+        <div class="form-group">
+            <label>Částka (Kč)</label>
+            <input type="text" inputmode="numeric" pattern="[0-9]*" id="inpBalanceAmount" placeholder="např. 250">
+        </div>
+        <div class="form-group">
+            <label>Důvod</label>
+            <input type="text" id="inpBalanceInfo" placeholder="např. výplata, předplatné...">
+        </div>
+        <button class="modal-btn primary" style="margin-top: 15px;" onclick="submitBalanceEntry()">Uložit</button>
+        <button class="modal-btn modal-close" onclick="closeBalanceForm()">Zrušit</button>
+    </div>
+
+    <div class="balance-form-overlay" id="historyActionOverlay" onclick="closeHistoryActionSheet()"></div>
+    <div class="balance-form" id="historyActionSheet">
+        <h2>Platba</h2>
+        <button class="modal-btn primary" style="margin-top: 5px;" onclick="editHistoryEntryFromSheet()">Upravit</button>
+        <button class="modal-btn" style="margin-top: 12px; background: #ef4444; color: #fff;" onclick="deleteHistoryEntryFromSheet()">Smazat</button>
+        <button class="modal-btn modal-close" style="margin-top: 12px;" onclick="closeHistoryActionSheet()">Zrušit</button>
+    </div>
+
+
+    <div class="history-list" id="historyList"></div>
+
+    <div class="wallet-sheet animating" id="walletSheet">
+        <div class="drag-handle-area" id="dragArea">
+            <button class="sheet-action-btn left" id="btnSync" onclick="openSyncModal()">Room</button>
+            <div class="drag-handle"></div>
+            <button class="sheet-action-btn right" id="btnAdd" onclick="openFormModal()">+</button>
+        </div>
+
+        <div class="wallet-content" id="cardList"></div>
+    </div>
+
+    <div class="overlay" id="modalOverlay" onclick="closeModals()"></div>
+
+    <div class="modal" id="syncModal">
+        <h2>Vyberte Roomku</h2>
+        
+        <div id="roomButtonsContainer"></div>
+        
+        <div class="flex-row">
+            <input type="text" id="inpNewRoom" placeholder="Nová roomka">
+            <button class="modal-btn primary" onclick="createNewRoom()">+</button>
+        </div>
+
+        <button class="modal-btn modal-close" onclick="closeModals()">Zrušit</button>
+    </div>
+
+    <div class="modal" id="formModal">
+        <h2 id="formTitle">Nová karta</h2>
+        <div class="form-group">
+            <label>Název karty</label>
+            <input type="text" id="inpName">
+        </div>
+        <div class="form-group">
+            <label>Poznámka</label>
+            <input type="text" id="inpNote">
+        </div>
+        <div class="form-group">
+            <label>Kód karty</label>
+            <input type="text" id="inpCode">
+        </div>
+        <div class="checkbox-group">
+            <input type="checkbox" id="inpIsQR">
+            <label for="inpIsQR" style="margin: 0;">Je to QR kód</label>
+        </div>
+        <button class="modal-btn primary" style="margin-top: 25px;" onclick="saveCard()">Uložit kartu</button>
+        <button class="modal-btn modal-close" onclick="closeModals()">Zrušit</button>
+    </div>
 
     <script>
+        // Registrace Service Workera pro PWA (převedeno z původního index.html)
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                // Registrace Service Workeru
                 navigator.serviceWorker.register('./sw.js')
                     .then((registration) => {
                         console.log('SW registrován pro:', registration.scope);
-
-                        // Automatická kontrola aktualizací při každém otevření
                         registration.update();
-
-                        // Pokud se stáhne nová verze, vynutíme reload, aby se načetla
                         registration.addEventListener('updatefound', () => {
                             const newWorker = registration.installing;
                             newWorker.addEventListener('statechange', () => {
@@ -52,7 +659,677 @@
                     .catch((err) => console.error('SW registrace selhala:', err));
             });
         }
-    </script>
 
+        const firebaseConfig = {
+            apiKey: "AIzaSyA6eh8N7PAe3nE7jCaJyO_g6JgihBLA-sw",
+            authDomain: "kotakengine-apk-gui.firebaseapp.com",
+            databaseURL: "https://kotakengine-apk-gui-default-rtdb.europe-west1.firebasedatabase.app",
+            projectId: "kotakengine-apk-gui",
+            storageBucket: "kotakengine-apk-gui.firebasestorage.app",
+            messagingSenderId: "1022545988426",
+            appId: "1:1022545988426:web:bc2f53f04066f306564fb3",
+            measurementId: "G-KV7D40WL5J"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        // ==========================================
+        // ZŮSTATEK (FIREBASE)
+        // ==========================================
+        function formatBalance(num) {
+            return Number(num).toLocaleString('cs-CZ');
+        }
+
+        // ==========================================
+        // ODEMKNUTÍ TLAČÍTEK (10x klik na zůstatek)
+        // ==========================================
+        let balanceTapCount = 0;
+        let balanceTapTimer = null;
+        let pendingNegative = false;
+
+        function setBalanceActionsVisible(visible) {
+            const el = document.getElementById('balanceActions');
+            if (visible) {
+                el.classList.add('visible');
+            } else {
+                el.classList.remove('visible');
+            }
+            localStorage.setItem('kotak_balance_actions_visible', visible ? '1' : '0');
+        }
+
+        function handleBalanceTap() {
+            balanceTapCount++;
+            clearTimeout(balanceTapTimer);
+            balanceTapTimer = setTimeout(() => { balanceTapCount = 0; }, 1500);
+
+            if (balanceTapCount >= 10) {
+                balanceTapCount = 0;
+                const isVisible = document.getElementById('balanceActions').classList.contains('visible');
+                setBalanceActionsVisible(!isVisible);
+            }
+        }
+
+        // Obnovení stavu tlačítek po refreshi
+        if (localStorage.getItem('kotak_balance_actions_visible') === '1') {
+            document.getElementById('balanceActions').classList.add('visible');
+        }
+
+        function openBalanceForm(negative) {
+            pendingNegative = negative;
+            editingHistoryKey = null;
+            document.getElementById('balanceFormTitle').textContent = negative ? 'Odebrat částku' : 'Přidat částku';
+            document.getElementById('inpBalanceAmount').value = '';
+            document.getElementById('inpBalanceInfo').value = '';
+            document.getElementById('balanceFormOverlay').classList.add('active');
+            document.getElementById('balanceForm').classList.add('active');
+        }
+
+        function closeBalanceForm() {
+            document.getElementById('balanceFormOverlay').classList.remove('active');
+            document.getElementById('balanceForm').classList.remove('active');
+        }
+
+        function submitBalanceEntry() {
+            const amount = parseFloat(document.getElementById('inpBalanceAmount').value);
+            const info = document.getElementById('inpBalanceInfo').value.trim();
+
+            if (!amount || amount <= 0) {
+                alert('Zadej platnou částku');
+                return;
+            }
+
+            if (editingHistoryKey) {
+                db.ref('money/history/' + editingHistoryKey).set({
+                    number: amount,
+                    negative: pendingNegative,
+                    info: info
+                });
+                editingHistoryKey = null;
+            } else {
+                db.ref('money/history').push({
+                    number: amount,
+                    negative: pendingNegative,
+                    info: info
+                });
+            }
+
+            closeBalanceForm();
+        }
+
+        function updateBalanceDisplay(history) {
+            const valueEl = document.getElementById('balanceValue');
+            const sum = (history || []).reduce((acc, item) => {
+                if (!item) return acc;
+                const amount = Number(item.number) || 0;
+                return acc + (item.negative ? -amount : amount);
+            }, 0);
+            valueEl.textContent = `${formatBalance(sum)} Kč`;
+
+            const pill = document.getElementById('balanceStatusPill');
+            if (sum > 100) {
+                pill.textContent = 'Zůstatek je zatím v pohodě';
+                pill.className = 'balance-status-pill ok';
+            } else {
+                pill.textContent = 'Zůstatek je příliš nízký';
+                pill.className = 'balance-status-pill low';
+            }
+        }
+
+        // ==========================================
+        // AKCE NAD POLOŽKOU HISTORIE (podržet = upravit/smazat)
+        // ==========================================
+        let editingHistoryKey = null;
+        let historyPressTimer = null;
+        let historyPressTriggered = false;
+        let activeHistoryItem = null;
+
+        function startHistoryPress(key) {
+            if (!document.getElementById('balanceActions').classList.contains('visible')) return;
+            historyPressTriggered = false;
+            clearTimeout(historyPressTimer);
+            historyPressTimer = setTimeout(() => {
+                historyPressTriggered = true;
+                openHistoryActionSheet(key);
+                if (navigator.vibrate) navigator.vibrate(30);
+            }, 500);
+        }
+
+        function cancelHistoryPress() {
+            clearTimeout(historyPressTimer);
+        }
+
+        function openHistoryActionSheet(key) {
+            activeHistoryItem = key;
+            document.getElementById('historyActionOverlay').classList.add('active');
+            document.getElementById('historyActionSheet').classList.add('active');
+        }
+
+        function closeHistoryActionSheet() {
+            document.getElementById('historyActionOverlay').classList.remove('active');
+            document.getElementById('historyActionSheet').classList.remove('active');
+            activeHistoryItem = null;
+        }
+
+        function deleteHistoryEntryFromSheet() {
+            if (!activeHistoryItem) return;
+            db.ref('money/history/' + activeHistoryItem).remove();
+            closeHistoryActionSheet();
+        }
+
+        function editHistoryEntryFromSheet() {
+            if (!activeHistoryItem) return;
+            db.ref('money/history/' + activeHistoryItem).once('value', (snapshot) => {
+                const item = snapshot.val();
+                if (!item) return;
+                editingHistoryKey = activeHistoryItem;
+                pendingNegative = !!item.negative;
+                document.getElementById('balanceFormTitle').textContent = pendingNegative ? 'Upravit odebranou částku' : 'Upravit přidanou částku';
+                document.getElementById('inpBalanceAmount').value = item.number;
+                document.getElementById('inpBalanceInfo').value = item.info || '';
+                closeHistoryActionSheet();
+                document.getElementById('balanceFormOverlay').classList.add('active');
+                document.getElementById('balanceForm').classList.add('active');
+            });
+        }
+
+        function renderHistory(history) {
+            const container = document.getElementById('historyList');
+            container.innerHTML = '';
+
+            updateBalanceDisplay(history);
+
+            if (!history || history.length === 0) return;
+
+            history.slice().reverse().forEach(item => {
+                if (!item || !item.key) return;
+                const el = document.createElement('div');
+                el.className = 'history-item';
+                const sign = item.negative ? '-' : '+';
+                const cls = item.negative ? 'negative' : 'positive';
+                el.innerHTML = `
+                    <span class="history-info">${item.info || ''}</span>
+                    <span class="history-amount ${cls}">${sign}${formatBalance(item.number)} Kč</span>
+                `;
+
+                el.addEventListener('mousedown', () => startHistoryPress(item.key));
+                el.addEventListener('touchstart', () => startHistoryPress(item.key), { passive: true });
+                el.addEventListener('mouseup', cancelHistoryPress);
+                el.addEventListener('mouseleave', cancelHistoryPress);
+                el.addEventListener('touchend', cancelHistoryPress);
+                el.addEventListener('touchmove', cancelHistoryPress);
+                el.addEventListener('click', (e) => {
+                    if (historyPressTriggered) { e.preventDefault(); e.stopPropagation(); }
+                });
+
+                container.appendChild(el);
+            });
+        }
+
+        function listenToHistory() {
+            const cachedHistory = localStorage.getItem('kotak_history');
+            if (cachedHistory) {
+                try { renderHistory(JSON.parse(cachedHistory)); } catch(e) {}
+            }
+
+            db.ref('money/history').on('value', (snapshot) => {
+                const data = snapshot.val();
+                let history = [];
+                if (data) {
+                    history = Object.entries(data).map(([key, value]) => ({ ...value, key }));
+                }
+                localStorage.setItem('kotak_history', JSON.stringify(history));
+                renderHistory(history);
+            });
+        }
+
+        listenToHistory();
+
+
+        let currentRoom = localStorage.getItem('kotak_active_room') || "room1"; 
+        let currentCards = []; 
+        let activeEditingIndex = null; 
+        let activeTopSheetIndex = null; 
+        let reorderIndex = null; 
+        const cardList = document.getElementById('cardList');
+
+        // ==========================================
+        // OFFLINE-FIRST NAČÍTÁNÍ KARET
+        // ==========================================
+        function listenToRoomUpdates() {
+            db.ref('rooms/' + currentRoom).off();
+
+            const cachedData = localStorage.getItem('kotak_cards_' + currentRoom);
+            if (cachedData) {
+                try {
+                    currentCards = JSON.parse(cachedData);
+                    renderCards();
+                } catch (e) {}
+            }
+
+            db.ref('rooms/' + currentRoom).on('value', (snapshot) => {
+                const data = snapshot.val();
+                if (data) {
+                    currentCards = Array.isArray(data) ? data : Object.values(data);
+                    localStorage.setItem('kotak_cards_' + currentRoom, JSON.stringify(currentCards));
+                } else {
+                    currentCards = [];
+                    localStorage.removeItem('kotak_cards_' + currentRoom);
+                }
+                renderCards();
+            }, (error) => {});
+        }
+
+        function renderCards() {
+            cardList.innerHTML = '';
+            currentCards.forEach((c, index) => {
+                if (!c) return; 
+                const el = document.createElement('div');
+                el.className = 'loyalty-card';
+                if (reorderIndex === index) el.classList.add('reorder-mode');
+                
+                const colors = ['linear-gradient(135deg, #1d4ed8, #1e3a8a)', 'linear-gradient(135deg, #dc2626, #991b1b)', 'linear-gradient(135deg, #16a34a, #065f46)', 'linear-gradient(135deg, #d97706, #92400e)'];
+                el.style.background = colors[index % colors.length];
+                
+                let noteHtml = c.disc ? `<div class="card-note">${c.disc}</div>` : '';
+                el.innerHTML = `<div class="card-header">${c.card}</div>${noteHtml}`;
+
+                if (reorderIndex === index) {
+                    const controls = document.createElement('div');
+                    controls.className = 'card-reorder-controls';
+                    
+                    const upBtn = document.createElement('button');
+                    upBtn.className = 'reorder-btn';
+                    upBtn.innerHTML = '▲';
+                    upBtn.onclick = (e) => { e.stopPropagation(); moveCard(index, -1); };
+
+                    const downBtn = document.createElement('button');
+                    downBtn.className = 'reorder-btn';
+                    downBtn.innerHTML = '▼';
+                    downBtn.onclick = (e) => { e.stopPropagation(); moveCard(index, 1); };
+
+                    controls.appendChild(upBtn);
+                    controls.appendChild(downBtn);
+                    el.appendChild(controls);
+                }
+
+                el.onclick = () => {
+                    if (reorderIndex !== null) {
+                        reorderIndex = null; 
+                        renderCards();
+                    } else {
+                        openTopSheet(index);
+                    }
+                };
+
+                let pressTimer;
+                const startLongPress = () => {
+                    pressTimer = setTimeout(() => {
+                        reorderIndex = index;
+                        renderCards();
+                        if (navigator.vibrate) navigator.vibrate(50); 
+                    }, 600); 
+                };
+                const cancelLongPress = () => clearTimeout(pressTimer);
+
+                el.addEventListener('touchstart', startLongPress, {passive: true});
+                el.addEventListener('touchend', cancelLongPress);
+                el.addEventListener('touchmove', cancelLongPress);
+                el.addEventListener('mousedown', startLongPress);
+                el.addEventListener('mouseup', cancelLongPress);
+                el.addEventListener('mouseleave', cancelLongPress);
+
+                cardList.appendChild(el);
+            });
+        }
+
+        function moveCard(index, direction) {
+            const newIndex = index + direction;
+            if (newIndex < 0 || newIndex >= currentCards.length) return; 
+
+            const temp = currentCards[index];
+            currentCards[index] = currentCards[newIndex];
+            currentCards[newIndex] = temp;
+            reorderIndex = newIndex; 
+
+            db.ref('rooms/' + currentRoom).set(currentCards).then(() => {
+                localStorage.setItem('kotak_cards_' + currentRoom, JSON.stringify(currentCards));
+                renderCards();
+            });
+        }
+
+        listenToRoomUpdates();
+
+        function loadRoomsToModal() {
+            const container = document.getElementById('roomButtonsContainer');
+            container.innerHTML = '<p style="color: #94a3b8; text-align: center;">Načítám...</p>';
+
+            db.ref('rooms').once('value').then((snapshot) => {
+                container.innerHTML = '';
+                const data = snapshot.val() || {};
+                const rooms = Object.keys(data);
+                
+                if (rooms.length === 0) {
+                    container.innerHTML = '<p style="color: #94a3b8; text-align: center;">Žádné roomky nenalezeny.</p>';
+                    return;
+                }
+
+                rooms.forEach(room => {
+                    const wrap = document.createElement('div');
+                    wrap.className = 'room-swipe-wrap';
+                    
+                    const btn = document.createElement('button');
+                    btn.className = 'modal-btn room-main-btn';
+                    if (room === currentRoom) btn.classList.add('active-room');
+                    btn.innerText = room.toUpperCase();
+                    
+                    const delBtn = document.createElement('button');
+                    delBtn.className = 'room-del-btn';
+                    delBtn.innerHTML = '🗑️';
+                    delBtn.onclick = () => deleteRoom(room);
+
+                    wrap.appendChild(delBtn);
+                    wrap.appendChild(btn);
+                    container.appendChild(wrap);
+
+                    initSwipeToDelete(wrap, btn, room);
+                });
+            }).catch(err => {
+                container.innerHTML = '<p style="color: #ef4444; text-align: center;">Chyba načítání.</p>';
+            });
+        }
+
+        function initSwipeToDelete(wrap, btn, roomName) {
+            let startX = 0;
+            let isSwiping = false;
+            let isDragging = false; 
+
+            const getPos = (e) => e.touches ? e.touches[0].clientX : e.clientX;
+
+            function start(e) {
+                startX = getPos(e);
+                isSwiping = true;
+                isDragging = false;
+                btn.style.transition = 'none';
+            }
+            
+            function move(e) {
+                if (!isSwiping) return;
+                let diff = getPos(e) - startX;
+                if (Math.abs(diff) > 5) isDragging = true; 
+                if (diff < 10 && diff > -70) { 
+                    btn.style.transform = `translateX(${diff < 0 ? diff : 0}px)`;
+                }
+            }
+            
+            function end(e) {
+                if (!isSwiping) return;
+                isSwiping = false;
+                btn.style.transition = 'transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1)';
+                let diff = getPos(e) - startX;
+                if (diff < -30) {
+                    btn.style.transform = 'translateX(-65px)';
+                    wrap.classList.add('swiped');
+                } else {
+                    btn.style.transform = 'translateX(0)';
+                    wrap.classList.remove('swiped');
+                }
+                setTimeout(() => { isDragging = false; }, 50);
+            }
+
+            btn.addEventListener('touchstart', start, {passive: true});
+            btn.addEventListener('touchmove', move, {passive: true});
+            btn.addEventListener('touchend', end);
+            btn.addEventListener('mousedown', start);
+            wrap.addEventListener('mousemove', move);
+            wrap.addEventListener('mouseup', end);
+            wrap.addEventListener('mouseleave', () => { if(isSwiping) end({clientX: startX}) });
+
+            btn.onclick = () => {
+                if (isDragging) return; 
+                if (wrap.classList.contains('swiped')) {
+                    btn.style.transform = 'translateX(0)';
+                    wrap.classList.remove('swiped');
+                    return;
+                }
+                switchRoom(roomName);
+            };
+        }
+
+        function switchRoom(roomName) {
+            currentRoom = roomName;
+            localStorage.setItem('kotak_active_room', currentRoom);
+            reorderIndex = null;
+            listenToRoomUpdates();
+            closeModals();
+        }
+
+        function createNewRoom() {
+            const input = document.getElementById('inpNewRoom');
+            let newRoomName = input.value.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+            if (!newRoomName) return alert('Zadej platný název!');
+            
+            const initialCards = [{ card: "Základní karta", disc: "Tuhle kartu můžeš upravit nebo smazat", kode: "12345678", id: "barcode" }];
+            db.ref('rooms/' + newRoomName).set(initialCards).then(() => {
+                localStorage.setItem('kotak_cards_' + newRoomName, JSON.stringify(initialCards));
+                input.value = '';
+                switchRoom(newRoomName);
+            });
+        }
+
+        function deleteRoom(roomName) {
+            if(confirm(`Opravdu smazat roomku ${roomName.toUpperCase()}?`)) {
+                db.ref('rooms/' + roomName).remove().then(() => {
+                    localStorage.removeItem('kotak_cards_' + roomName);
+                    if(currentRoom === roomName) {
+                        currentCards = [];
+                        renderCards();
+                        switchRoom("room1");
+                    }
+                    loadRoomsToModal();
+                });
+            }
+        }
+
+        const modalOverlay = document.getElementById('modalOverlay');
+        const syncModal = document.getElementById('syncModal');
+        const formModal = document.getElementById('formModal');
+
+        function openSyncModal() {
+            modalOverlay.classList.add('active');
+            syncModal.classList.add('active');
+            loadRoomsToModal(); 
+        }
+
+        function openFormModal(editIndex = null) {
+            activeEditingIndex = editIndex;
+            modalOverlay.classList.add('active');
+            formModal.classList.add('active');
+            const title = document.getElementById('formTitle');
+            if (editIndex !== null) {
+                title.innerText = "Upravit kartu";
+                let c = currentCards[editIndex];
+                document.getElementById('inpName').value = c.card;
+                document.getElementById('inpNote').value = c.disc;
+                document.getElementById('inpCode').value = c.kode;
+                document.getElementById('inpIsQR').checked = (c.id === 'qrcode');
+            } else {
+                title.innerText = "Nová karta";
+                document.getElementById('inpName').value = '';
+                document.getElementById('inpNote').value = '';
+                document.getElementById('inpCode').value = '';
+                document.getElementById('inpIsQR').checked = false;
+            }
+        }
+
+        function closeModals() {
+            modalOverlay.classList.remove('active');
+            syncModal.classList.remove('active');
+            formModal.classList.remove('active');
+            activeEditingIndex = null;
+        }
+
+        function saveCard() {
+            const cardName = document.getElementById('inpName').value;
+            const note = document.getElementById('inpNote').value;
+            const code = document.getElementById('inpCode').value;
+            const isQR = document.getElementById('inpIsQR').checked;
+
+            if (!cardName || !code) return alert("Musíš vyplnit jméno a kód!");
+
+            const cardData = { card: cardName, disc: note, kode: code, id: isQR ? "qrcode" : "barcode" };
+            let newCards = [...currentCards].filter(n => n); 
+
+            if (activeEditingIndex !== null) {
+                newCards[activeEditingIndex] = cardData;
+            } else {
+                newCards.push(cardData);
+            }
+
+            db.ref('rooms/' + currentRoom).set(newCards).then(() => {
+                localStorage.setItem('kotak_cards_' + currentRoom, JSON.stringify(newCards));
+                closeModals();
+                if (activeTopSheetIndex !== null && activeTopSheetIndex === activeEditingIndex) {
+                    openTopSheet(activeTopSheetIndex); 
+                }
+            });
+        }
+
+        function deleteActiveCard() {
+            if(confirm("Opravdu smazat kartu?")) {
+                let newCards = [...currentCards].filter(n => n);
+                newCards.splice(activeTopSheetIndex, 1);
+                db.ref('rooms/' + currentRoom).set(newCards).then(() => {
+                    localStorage.setItem('kotak_cards_' + currentRoom, JSON.stringify(newCards));
+                    closeTopSheet();
+                });
+            }
+        }
+
+        const topSheet = document.getElementById('topSheet');
+        const topSheetOverlay = document.getElementById('topSheetOverlay');
+        const tsDragArea = document.getElementById('tsDragArea');
+        const tsCodeVisual = document.getElementById('tsCodeVisual');
+
+        function openTopSheet(index) {
+            activeTopSheetIndex = index;
+            const c = currentCards[index];
+            document.getElementById('tsCardName').innerText = c.card;
+            document.getElementById('tsCodeText').innerText = c.kode;
+            tsCodeVisual.innerHTML = "";
+
+            if (c.id === "qrcode") {
+                new QRCode(tsCodeVisual, {
+                    text: c.kode, width: 150, height: 150,
+                    colorDark : "#000000", colorLight : "#ffffff", correctLevel : QRCode.CorrectLevel.H
+                });
+            } else {
+                const canvas = document.createElement('canvas');
+                tsCodeVisual.appendChild(canvas);
+                try {
+                    JsBarcode(canvas, c.kode, { format: "CODE128", width: 2, height: 80, displayValue: false, margin: 0 });
+                } catch (e) {
+                    tsCodeVisual.innerHTML = "<p style='color:red;'>Neplatný formát kódu</p>";
+                }
+            }
+
+            topSheetOverlay.classList.add('active');
+            topSheet.classList.add('active');
+            topSheet.classList.remove('expanded'); 
+        }
+
+        function closeTopSheet() {
+            topSheetOverlay.classList.remove('active');
+            topSheet.classList.remove('active');
+            topSheet.classList.remove('expanded');
+            activeTopSheetIndex = null;
+        }
+
+        function editActiveCard() {
+            const idxToEdit = activeTopSheetIndex; 
+            closeTopSheet();
+            setTimeout(() => openFormModal(idxToEdit), 300);
+        }
+
+        let tsStartY = 0;
+        let tsDragging = false;
+        function onTsDragStart(y) { tsStartY = y; tsDragging = true; }
+        function onTsDragEnd(y) {
+            if(!tsDragging) return;
+            tsDragging = false;
+            let deltaY = y - tsStartY;
+            if (deltaY < -30) closeTopSheet();
+            else if (deltaY > 30) topSheet.classList.add('expanded');
+        }
+
+        tsDragArea.addEventListener('touchstart', e => onTsDragStart(e.touches[0].clientY), {passive: true});
+        document.addEventListener('touchend', e => { if(tsDragging) onTsDragEnd(e.changedTouches[0].clientY); });
+        tsDragArea.addEventListener('mousedown', e => onTsDragStart(e.clientY));
+        document.addEventListener('mouseup', e => { if(tsDragging) onTsDragEnd(e.clientY); });
+
+        const sheet = document.getElementById('walletSheet');
+        const dragArea = document.getElementById('dragArea');
+        const actionBtns = document.querySelectorAll('.sheet-action-btn');
+        
+        actionBtns.forEach(b => {
+            b.addEventListener('mousedown', e => e.stopPropagation());
+            b.addEventListener('touchstart', e => e.stopPropagation(), {passive: true});
+        });
+
+        const visibleHeight = 60; 
+        let sheetHeight = sheet.offsetHeight;
+        let maxTranslateY = sheetHeight - visibleHeight; 
+        let currentTranslateY = maxTranslateY;
+        let startY = 0;
+        let isWalletDragging = false;
+        let isExpanded = false;
+
+        window.addEventListener('resize', () => {
+            sheetHeight = sheet.offsetHeight;
+            maxTranslateY = sheetHeight - visibleHeight;
+            if (!isExpanded) {
+                currentTranslateY = maxTranslateY;
+                sheet.style.transform = `translateY(${currentTranslateY}px)`;
+            }
+        });
+
+        function onDragStartWallet(y) {
+            isWalletDragging = true; startY = y;
+            sheet.classList.remove('animating'); sheet.classList.remove('expanded');
+        }
+        function onDragMoveWallet(y) {
+            if (!isWalletDragging) return;
+            let newTranslateY = currentTranslateY + (y - startY);
+            if (newTranslateY < 0) newTranslateY = 0;
+            if (newTranslateY > maxTranslateY) newTranslateY = maxTranslateY;
+            sheet.style.transform = `translateY(${newTranslateY}px)`;
+        }
+        function onDragEndWallet(y) {
+            if (!isWalletDragging) return;
+            isWalletDragging = false;
+            sheet.classList.add('animating'); 
+            currentTranslateY += (y - startY);
+            let deltaY = y - startY;
+            if (Math.abs(deltaY) < 5) {
+                if (isExpanded) { currentTranslateY = maxTranslateY; isExpanded = false; sheet.classList.remove('expanded'); }
+                else { currentTranslateY = 0; isExpanded = true; sheet.classList.add('expanded'); }
+            } else if (deltaY < -15) {
+                currentTranslateY = 0; isExpanded = true; sheet.classList.add('expanded');
+            } else if (deltaY > 15) {
+                currentTranslateY = maxTranslateY; isExpanded = false; sheet.classList.remove('expanded');
+            } else {
+                currentTranslateY = isExpanded ? 0 : maxTranslateY;
+                if(isExpanded) sheet.classList.add('expanded'); else sheet.classList.remove('expanded');
+            }
+            sheet.style.transform = `translateY(${currentTranslateY}px)`;
+        }
+
+        dragArea.addEventListener('touchstart', e => onDragStartWallet(e.touches[0].clientY), {passive: true});
+        document.addEventListener('touchmove', e => { if (isWalletDragging) { e.preventDefault(); onDragMoveWallet(e.touches[0].clientY); } }, {passive: false});
+        document.addEventListener('touchend', e => { if (isWalletDragging) onDragEndWallet(e.changedTouches[0].clientY); });
+        dragArea.addEventListener('mousedown', e => onDragStartWallet(e.clientY));
+        document.addEventListener('mousemove', e => { if (isWalletDragging) { e.preventDefault(); onDragMoveWallet(e.clientY); } });
+        document.addEventListener('mouseup', e => { if (isWalletDragging) onDragEndWallet(e.clientY); });
+    </script>
 </body>
 </html>

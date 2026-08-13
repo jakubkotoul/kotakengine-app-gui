@@ -1,14 +1,14 @@
-const CACHE_NAME = 'kotakengine-v2';
+const CACHE_NAME = 'kotakengine-v4';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
   './app.html',
   './manifest.json',
   './logo.png'
-  // Přidej sem další klíčové statické soubory, pokud je potřebuješ
+  // money.html záměrně vynecháváme, aby se necachoval
 ];
 
-// Instalace Service Workeru a uložení základních souborů do cache
+// Instalace Service Workeru
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
@@ -18,7 +18,7 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
 
-// Aktivace a smazání starých cache verzí
+// Aktivace a okamžité převzetí kontroly
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
@@ -34,27 +34,47 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// Strategie: Network First (Sítě napřed, při offlinefallback do cache)
+// Strategie načítání
 self.addEventListener('fetch', (event) => {
-  // Ignorovat požadavky, které nejsou GET (např. rozšíření apod.)
   if (event.request.method !== 'GET') return;
 
+  const url = new URL(event.request.url);
+
+  // SPECIÁLNÍ PRAVIDLO PRO IFRAME S PENĚZI (zde zadej přesný název tvého souboru)
+  if (url.pathname.endsWith('money.html')) {
+    event.respondWith(
+      fetch(event.request)
+        .catch(() => {
+          // Bez internetu vrátí tuto chybovou hlášku přímo do iframe
+          return new Response(`
+            <html>
+              <head><meta charset="UTF-8"><title>Offline</title></head>
+              <body style="background:#111; color:#ff5555; font-family:sans-serif; text-align:center; padding-top:40vh; margin:0;">
+                <h3>Chybí připojení k internetu</h3>
+                <p style="font-size: 14px; color: #888;">Tato sekce nelze v offline režimu zobrazit.</p>
+              </body>
+            </html>
+          `, {
+            status: 404,
+            headers: { 'Content-Type': 'text/html; charset=utf-8' }
+          });
+        })
+    );
+    return;
+  }
+
+  // Zbytek aplikace funguje normálně (přes síť, s fallbackem do cache při offline)
   event.respondWith(
     fetch(event.request)
       .then((networkResponse) => {
-        // Pokud jsme online, odpovíme ze sítě a zároveň si aktualizujeme cache
         return caches.open(CACHE_NAME).then((cache) => {
           cache.put(event.request, networkResponse.clone());
           return networkResponse;
         });
       })
       .catch(() => {
-        // Pokud spadne internet, vytáhneme poslední známou verzi z cache
         return caches.match(event.request).then((cachedResponse) => {
-          if (cachedResponse) {
-            return cachedResponse;
-          }
-          // Fallback, pokud není k dispozici v cache ani v síti
+          if (cachedResponse) return cachedResponse;
           if (event.request.headers.get('accept').includes('text/html')) {
             return caches.match('./index.html');
           }
