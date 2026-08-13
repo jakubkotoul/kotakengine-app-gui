@@ -66,13 +66,14 @@
             text-shadow: 0 4px 20px rgba(239, 68, 68, 0.3);
         }
 
-        /* Výrazné pulzování */
+        /* Agresivní pulzování a blikání */
         .balance-value.pulsing {
-            animation: pulse-heavy 0.8s infinite alternate ease-in-out;
+            animation: pulse-flash 0.4s infinite alternate ease-in-out;
         }
-        @keyframes pulse-heavy {
-            0% { transform: scale(1); opacity: 1; }
-            100% { transform: scale(1.18); opacity: 0.6; }
+        @keyframes pulse-flash {
+            0% { transform: scale(1); opacity: 1; text-shadow: 0 4px 10px rgba(239, 68, 68, 0.2); }
+            50% { opacity: 0.2; }
+            100% { transform: scale(1.25); opacity: 1; text-shadow: 0 4px 30px rgba(239, 68, 68, 0.9); }
         }
 
         /* SVG Lomený graf pod částkou (posledních 10 zápisů) */
