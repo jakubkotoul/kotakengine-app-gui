@@ -31,6 +31,33 @@
             align-items: center;
         }
 
+        /* --- TLAČÍTKO PRO UTISKNUTÍ NOTIFIKACÍ V LEVÉM HORNÍM ROHU --- */
+        .notif-mute-btn {
+            position: absolute;
+            top: 14px;
+            left: 14px;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: #1e293b;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            color: #64748b;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 16px;
+            cursor: pointer;
+            z-index: 10;
+            transition: all 0.2s ease;
+        }
+        /* Když svítí (aktivní = notifikace jsou blokované) */
+        .notif-mute-btn.muted {
+            background: rgba(239, 68, 68, 0.15);
+            border-color: rgba(239, 68, 68, 0.4);
+            color: #ef4444;
+            box-shadow: 0 0 12px rgba(239, 68, 68, 0.3);
+        }
+
         /* --- HLAVNÍ ČÁSTKA A GRAF --- */
         .balance-display {
             width: 100%;
@@ -204,6 +231,9 @@
 </head>
 <body>
 
+    <!-- Tlačítko pro vypnutí příjmu notifikací v levém horním rohu -->
+    <button class="notif-mute-btn" id="notifMuteBtn" onclick="toggleNotificationMute()" title="Ztlumit notifikace">🔕</button>
+
     <!-- ZŮSTATEK -->
     <div class="balance-display" id="balanceDisplay">
         <div class="balance-value color-green" id="balanceValue" onclick="handleBalanceTap()">0 Kč</div>
@@ -293,6 +323,24 @@
 
         let currentBalanceValue = "0";
 
+        // --- STAV TLUMENÍ NOTIFIKACÍ ---
+        let isNotifMuted = localStorage.getItem('kotak_notif_muted') === '1';
+        const muteBtn = document.getElementById('notifMuteBtn');
+        if (isNotifMuted) {
+            muteBtn.classList.add('muted');
+        }
+
+        function toggleNotificationMute() {
+            isNotifMuted = !isNotifMuted;
+            if (isNotifMuted) {
+                muteBtn.classList.add('muted');
+                localStorage.setItem('kotak_notif_muted', '1');
+            } else {
+                muteBtn.classList.remove('muted');
+                localStorage.setItem('kotak_notif_muted', '0');
+            }
+        }
+
         // --- 10x KLIKNUTÍ PRO OTEVŘENÍ EDIT MODE PANELU ---
         let balanceTapCount = 0;
         let balanceTapTimer = null;
@@ -376,6 +424,9 @@
         }
 
         function triggerSystemNotification(title, body) {
+            // Pokud je zapnuté tlačítko pro ztlumení v rohu, notifikaci ignorujeme
+            if (isNotifMuted) return;
+
             if (!("Notification" in window)) {
                 alert("Tento prohlížeč nepodporuje notifikace.");
                 return;
