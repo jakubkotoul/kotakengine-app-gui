@@ -76,7 +76,7 @@
             100% { transform: scale(1.25); opacity: 1; text-shadow: 0 4px 30px rgba(239, 68, 68, 0.9); }
         }
 
-        /* SVG Lomený graf pod částkou (posledních 10 zápisů) */
+        /* SVG Lomený graf pod částkou */
         .trend-chart-container {
             width: 180px;
             height: 35px;
@@ -91,7 +91,7 @@
             overflow: visible;
         }
 
-        /* --- EDIT MODE TLAČÍTKA (Vedle sebe v jedné řadě) --- */
+        /* --- EDIT MODE TLAČÍTKA V JEDNÉ ŘADĚ --- */
         .edit-panel {
             display: none;
             width: 100%;
@@ -147,11 +147,28 @@
             z-index: 91;
         }
         .balance-form.active { display: block; }
-        .balance-form h2 { margin-bottom: 16px; font-size: 18px; color: #fff; }
+        .balance-form h2 { margin-bottom: 16px; font-size: 18px; color: #fff; text-align: center; }
 
         .form-group { margin-bottom: 15px; text-align: left; }
         .form-group label { display: block; font-size: 0.8rem; color: #94a3b8; margin-bottom: 6px; }
         .form-group input[type="text"] { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #fff; font-size: 1rem; }
+
+        /* Styly pro rychlé volby v notifikacích */
+        .notif-option-btn {
+            width: 100%;
+            padding: 10px 12px;
+            margin-bottom: 8px;
+            border-radius: 10px;
+            border: 1px solid rgba(56, 189, 248, 0.3);
+            background: rgba(56, 189, 248, 0.08);
+            color: #38bdf8;
+            font-size: 13px;
+            font-weight: bold;
+            cursor: pointer;
+            text-align: left;
+            transition: background 0.2s;
+        }
+        .notif-option-btn:active { background: rgba(56, 189, 248, 0.2); }
 
         .modal-btn { width: 100%; padding: 12px; margin-bottom: 10px; border-radius: 8px; border: none; font-weight: bold; background: #334155; color: #fff; cursor: pointer; }
         .modal-btn.primary { background: #38bdf8; color: #090d16; }
@@ -201,7 +218,7 @@
             <button class="edit-btn" id="btnPulseToggle" onclick="togglePulseNotification()">Upozornit</button>
             <button class="edit-btn" onclick="openBalanceForm(true)">Odebrat</button>
             <button class="edit-btn" onclick="openBalanceForm(false)">Přidat</button>
-            <button class="edit-btn" onclick="triggerNotificationAction()">Oznámení</button>
+            <button class="edit-btn" onclick="openNotificationModal()">Oznámení</button>
         </div>
     </div>
 
@@ -219,6 +236,28 @@
         </div>
         <button class="modal-btn primary" style="margin-top: 15px;" onclick="submitBalanceEntry()">Uložit</button>
         <button class="modal-btn modal-close" onclick="closeBalanceForm()">Zrušit</button>
+    </div>
+
+    <!-- MODAL OKNO PRO OZNÁMENÍ -->
+    <div class="balance-form-overlay" id="notifModalOverlay" onclick="closeNotificationModal()"></div>
+    <div class="balance-form" id="notifModal">
+        <h2>Odeslat oznámení</h2>
+        
+        <!-- 3 rychlé volby -->
+        <div style="margin-bottom: 15px;">
+            <button class="notif-option-btn" onclick="sendPresetNotification('Na účtu zbývá ' + currentBalanceValue + ' Kč')">Na účtu zbývá [zůstatek]</button>
+            <button class="notif-option-btn" onclick="sendPresetNotification('Pozor! Málo peněz na účtu (' + currentBalanceValue + ' Kč)')">Pozor! Málo peněz na účtu</button>
+            <button class="notif-option-btn" onclick="sendPresetNotification('Na účtu je nedostatek peněz (' + currentBalanceValue + ' Kč)')">Na účtu je nedostatek peněz</button>
+        </div>
+
+        <!-- Textbox pro vlastní zprávu -->
+        <div class="form-group">
+            <label>Vlastní zpráva</label>
+            <input type="text" id="inpCustomNotif" placeholder="Napiš vlastní text...">
+        </div>
+
+        <button class="modal-btn primary" onclick="sendCustomNotification()">Odeslat</button>
+        <button class="modal-btn modal-close" onclick="closeNotificationModal()">Zrušit</button>
     </div>
 
     <!-- AKCE NAD HISTORIÍ (UPRAVIT / SMAZAT) -->
@@ -252,6 +291,8 @@
             return Number(num).toLocaleString('cs-CZ');
         }
 
+        let currentBalanceValue = "0";
+
         // --- 10x KLIKNUTÍ PRO OTEVŘENÍ EDIT MODE PANELU ---
         let balanceTapCount = 0;
         let balanceTapTimer = null;
@@ -283,7 +324,7 @@
             document.getElementById('editPanel').classList.add('visible');
         }
 
-        // --- TLAČÍTKO UPOZORNIT (VÝRAZNÉ PULZOVÁNÍ) ---
+        // --- TLAČÍTKO UPOZORNIT (PULZOVÁNÍ) ---
         let isPulsingActive = localStorage.getItem('kotak_pulse_active') === '1';
         if (isPulsingActive) {
             document.getElementById('balanceValue').classList.add('pulsing');
@@ -306,8 +347,31 @@
             }
         }
 
-        function triggerNotificationAction() {
-            alert('Tlačítko Oznámení – připraveno k nastavení!');
+        // --- OTEVŘENÍ / ZAVŘENÍ OKNA PRO OZNÁMENÍ ---
+        function openNotificationModal() {
+            document.getElementById('inpCustomNotif').value = '';
+            document.getElementById('notifModalOverlay').classList.add('active');
+            document.getElementById('notifModal').classList.add('active');
+        }
+
+        function closeNotificationModal() {
+            document.getElementById('notifModalOverlay').classList.remove('active');
+            document.getElementById('notifModal').classList.remove('active');
+        }
+
+        function sendPresetNotification(text) {
+            closeNotificationModal();
+            alert("Odesláno oznámení:\n\n" + text);
+        }
+
+        function sendCustomNotification() {
+            const customText = document.getElementById('inpCustomNotif').value.trim();
+            if (!customText) {
+                alert("Zadej vlastní text oznámení!");
+                return;
+            }
+            closeNotificationModal();
+            alert("Odesláno oznámení:\n\n" + customText);
         }
 
         // --- FORMULÁŘ ---
@@ -353,14 +417,13 @@
             closeBalanceForm();
         }
 
-        // --- VYKRESLENÍ LOMENÉHO GRAFU (POSLEDNÍCH 10 ZÁPISŮ) ---
+        // --- VYKRESLENÍ LOMENÉHO GRAFU ---
         function renderTrendChart(history) {
             const svg = document.getElementById('trendSvg');
             svg.innerHTML = '';
 
             if (!history || history.length === 0) return;
 
-            // Vezmeme maximálně posledních 10 záznamů a spočítáme průběžný zůstatek v čase
             const last10 = history.slice(-10);
             let runningSum = 0;
             const points = last10.map(item => {
@@ -369,7 +432,7 @@
                 return runningSum;
             });
 
-            if (points.length < 2) return; // Pro lomenou čáru potřebujeme alespoň 2 body
+            if (points.length < 2) return;
 
             const min = Math.min(...points);
             const max = Math.max(...points);
@@ -381,12 +444,10 @@
 
             const coords = points.map((val, index) => {
                 const x = (index / (points.length - 1)) * (width - padding * 2) + padding;
-                // Osa Y je invertovaná (SVG má 0 nahoře)
                 const y = height - padding - ((val - min) / range) * (height - padding * 2);
                 return { x, y };
             });
 
-            // Sestavení SVG polyline bodů
             const ptsString = coords.map(c => `${c.x},${c.y}`).join(' ');
 
             const polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
@@ -398,7 +459,6 @@
             polyline.setAttribute('stroke-linejoin', 'round');
             svg.appendChild(polyline);
 
-            // Vykreslení malých bodů na vrcholech
             coords.forEach(c => {
                 const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
                 circle.setAttribute('cx', c.x);
@@ -421,9 +481,9 @@
                 return acc + (item.negative ? -amount : amount);
             }, 0);
 
-            valueEl.textContent = `${formatBalance(sum)} Kč`;
+            currentBalanceValue = formatBalance(sum);
+            valueEl.textContent = `${currentBalanceValue} Kč`;
 
-            // Změna barev podle nových limitů (<100 červená, 100-200 žlutá, >200 zelená)
             valueEl.className = 'balance-value';
             if (isPulsingActive) valueEl.classList.add('pulsing');
 
@@ -435,7 +495,6 @@
                 valueEl.classList.add('color-red');
             }
 
-            // Vykreslení lomeného grafu
             renderTrendChart(history);
         }
 
