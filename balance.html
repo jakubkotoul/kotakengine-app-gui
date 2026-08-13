@@ -41,13 +41,16 @@
             background: #1e293b;
             border: 1px solid rgba(148, 163, 184, 0.2);
             color: #64748b;
-            display: flex;
+            display: none; /* Skryté ve výchozím stavu */
             justify-content: center;
             align-items: center;
             font-size: 16px;
             cursor: pointer;
             z-index: 10;
             transition: all 0.2s ease;
+        }
+        .notif-mute-btn.visible {
+            display: flex; /* Zobrazí se jen v editmodu */
         }
         .notif-mute-btn.muted {
             background: rgba(239, 68, 68, 0.15);
@@ -259,7 +262,7 @@
         
         <div style="margin-bottom: 15px;">
             <button class="notif-option-btn" onclick="sendPresetNotification('Na účtu zbývá ' + currentBalanceValue + ' Kč')">Na účtu zbývá [zůstatek]</button>
-            <button class="notif-option-btn" onclick="sendPresetNotification('Pozor! Málo peněz na účtu (' + currentBalanceValue + ' Kč)')">Pozor! Máло peněz na účtu</button>
+            <button class="notif-option-btn" onclick="sendPresetNotification('Pozor! Málo peněz na účtu (' + currentBalanceValue + ' Kč)')">Pozor! Málo peněz na účtu</button>
             <button class="notif-option-btn" onclick="sendPresetNotification('Na účtu je nedostatek peněz (' + currentBalanceValue + ' Kč)')">Na účtu je nedostatek peněz</button>
         </div>
 
@@ -326,10 +329,13 @@
 
         function setEditPanelVisible(visible) {
             const panel = document.getElementById('editPanel');
+            const muteBtnEl = document.getElementById('notifMuteBtn');
             if (visible) {
                 panel.classList.add('visible');
+                muteBtnEl.classList.add('visible');
             } else {
                 panel.classList.remove('visible');
+                muteBtnEl.classList.remove('visible');
             }
             localStorage.setItem('kotak_edit_panel_visible', visible ? '1' : '0');
         }
@@ -348,6 +354,7 @@
 
         if (localStorage.getItem('kotak_edit_panel_visible') === '1') {
             document.getElementById('editPanel').classList.add('visible');
+            document.getElementById('notifMuteBtn').classList.add('visible');
         }
 
         let isPulsingActive = localStorage.getItem('kotak_pulse_active') === '1';
@@ -383,7 +390,6 @@
             document.getElementById('notifModal').classList.remove('active');
         }
 
-        // Čisté spuštění notifikace přímo přes Service Worker bez chyb a duplikování
         function sendPresetNotification(text) {
             closeNotificationModal();
             if (isNotifMuted) return;
@@ -407,7 +413,6 @@
                 return;
             }
 
-            // Pokud ještě nemáme oprávnění, vyžádáme si ho
             if (Notification.permission === "granted") {
                 showSwNotification(title, body);
             } else if (Notification.permission !== "denied") {
