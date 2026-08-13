@@ -37,21 +37,16 @@
             position: relative;
         }
 
-        /* --- KONTENEUR PRO DYNAMICKÝ IFRAME --- */
-        #frameContainer {
+        /* --- IFRAME PRO ZŮSTATEK A HISTORII --- */
+        #balanceFrame {
             position: absolute;
             top: 5px;
             left: 5px;
             width: calc(100vw - 10px);
             height: calc(100vh - 70px);
-            z-index: 1;
-        }
-
-        #balanceFrame {
-            width: 100%;
-            height: 100%;
             border: none;
             background: transparent;
+            z-index: 1;
             border-radius: 16px;
         }
 
@@ -349,7 +344,7 @@
 </head>
 <body>
 
-    <!-- DYNAMICKÝ IFRAME PRO ZŮSTATEK (Chrání před PWA cache) -->
+    <!-- DYNAMICKÝ IFRAME PRO ZŮSTATEK -->
     <div id="frameContainer"></div>
 
     <div class="top-sheet-overlay" id="topSheetOverlay" onclick="closeTopSheet()"></div>
@@ -481,11 +476,12 @@
         const cardList = document.getElementById('cardList');
 
         // ==========================================
-        // OFFLINE-FIRST NAČÍTÁNÍ KARET
+        // OFFLINE-FIRST NAČÍTÁNÍ KARET S HLÁŠKOU
         // ==========================================
         function listenToRoomUpdates() {
             db.ref('rooms/' + currentRoom).off();
 
+            // 1. Okamžité načtení poslední online cache
             const cachedData = localStorage.getItem('kotak_cards_' + currentRoom);
             if (cachedData) {
                 try {
@@ -494,21 +490,57 @@
                 } catch (e) {}
             }
 
+            // 2. Sledování stavu připojení pro zobrazení offline hlášky v boxu
+            const connectedRef = db.ref(".info/connected");
+            connectedRef.on("value", (snap) => {
+                const isConnected = snap.val();
+                let walletContent = document.getElementById('cardList');
+                let existingMsg = document.getElementById('offlineCardsMessage');
+
+                if (!isConnected) {
+                    if (!existingMsg && walletContent) {
+                        const msg = document.createElement('div');
+                        msg.id = 'offlineCardsMessage';
+                        msg.className = 'offline-message';
+                        msg.style.cssText = 'color: #64748b; font-size: 0.85rem; font-weight: bold; text-transform: uppercase; text-align: center; margin-bottom: 10px; letter-spacing: 1px;';
+                        msg.innerText = 'Jsi offline – zobrazeny poslední uložené karty';
+                        walletContent.prepend(msg);
+                    }
+                } else {
+                    if (existingMsg) {
+                        existingMsg.remove();
+                    }
+                }
+            });
+
+            // 3. Synchronizace z Firebase a aktualizace cache
             db.ref('rooms/' + currentRoom).on('value', (snapshot) => {
                 const data = snapshot.val();
                 if (data) {
                     currentCards = Array.isArray(data) ? data : Object.values(data);
                     localStorage.setItem('kotak_cards_' + currentRoom, JSON.stringify(currentCards));
-                } else {
+                } else if (!cachedData) {
                     currentCards = [];
                     localStorage.removeItem('kotak_cards_' + currentRoom);
                 }
                 renderCards();
-            }, (error) => {});
+            }, (error) => {
+                if (cachedData) {
+                    currentCards = JSON.parse(cachedData);
+                    renderCards();
+                }
+            });
         }
 
         function renderCards() {
             cardList.innerHTML = '';
+            
+            // Pokud tu visí offline hláška, zachováme ji nahoře v seznamu
+            const connectedRefSnap = document.getElementById('offlineCardsMessage');
+            if (connectedRefSnap) {
+                cardList.appendChild(connectedRefSnap);
+            }
+
             currentCards.forEach((c, index) => {
                 if (!c) return; 
                 const el = document.createElement('div');
